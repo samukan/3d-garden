@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="Skill Garden is a recruiter-friendly portfolio where projects grow as a generated 3D garden."
+    />
+    <title>Skill Garden</title>
+  </head>
+  <body>
+    <div id="app">
+      <canvas id="renderCanvas" aria-label="Skill Garden 3D portfolio scene"></canvas>
+
+      <div class="ui-shell">
+        <header class="top-bar">
+          <div class="brand-card">
+            <p class="eyebrow">Portfolio MVP</p>
+            <h1>Skill Garden</h1>
+            <p class="brand-copy">
+              Projects are generated from local data and planted into a navigable 3D garden.
+            </p>
+          </div>
+
+          <div class="controls-cluster">
+            <div id="status-badge" class="status-badge" aria-live="polite"></div>
+            <button id="quality-toggle" class="quality-toggle" type="button"></button>
+          </div>
+        </header>
+
+        <aside id="project-card" class="project-card" aria-live="polite">
+          <p class="eyebrow">How to use</p>
+          <h2>Explore the garden</h2>
+          <p>
+            Hover a tree to preview it, then click to focus the camera and open recruiter-friendly
+            project details.
+          </p>
+          <ul class="hint-list">
+            <li>Impact shapes height.</li>
+            <li>Scope thickens the trunk.</li>
+            <li>Tech stack adds branches and foliage.</li>
+            <li>Year moves projects through the garden timeline.</li>
+          </ul>
+        </aside>
+      </div>
+    </div>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+  </html>

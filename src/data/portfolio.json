@@ -1,0 +1,67 @@
+[
+  {
+    "id": "skill-garden",
+    "title": "Skill Garden",
+    "summary": "A recruiter-friendly portfolio experiment where project metadata grows a generated 3D landscape instead of a flat case-study list.",
+    "year": 2026,
+    "impact": 8,
+    "scope": 7,
+    "tech": ["TypeScript", "Babylon.js", "Vite", "WebGPU"],
+    "biomeID": "meadow",
+    "links": {
+      "repo": "https://github.com/example/skill-garden"
+    },
+    "featured": true
+  },
+  {
+    "id": "ops-orbit",
+    "title": "Ops Orbit",
+    "summary": "A release observability dashboard that combined deployment telemetry, incident context, and service ownership into one operational view.",
+    "year": 2024,
+    "impact": 9,
+    "scope": 8,
+    "tech": ["TypeScript", "Node.js", "PostgreSQL", "Grafana", "Docker"],
+    "biomeID": "orchard",
+    "links": {
+      "demo": "https://example.com/ops-orbit",
+      "repo": "https://github.com/example/ops-orbit"
+    },
+    "featured": true
+  },
+  {
+    "id": "studio-notes",
+    "title": "Studio Notes",
+    "summary": "A collaborative note workspace for design reviews that reduced context-switching and made decision logs easy to search later.",
+    "year": 2023,
+    "impact": 6,
+    "scope": 5,
+    "tech": ["Vue", "Firebase", "TypeScript"],
+    "biomeID": "meadow",
+    "links": {
+      "demo": "https://example.com/studio-notes"
+    }
+  },
+  {
+    "id": "parcel-path",
+    "title": "Parcel Path",
+    "summary": "A logistics planning tool that surfaced route constraints and SLA risk early, helping teams choose better delivery strategies.",
+    "year": 2022,
+    "impact": 7,
+    "scope": 9,
+    "tech": ["React", "Mapbox", "Python", "FastAPI", "Redis"],
+    "biomeID": "orchard",
+    "links": {
+      "repo": "https://github.com/example/parcel-path"
+    }
+  },
+  {
+    "id": "signal-room",
+    "title": "Signal Room",
+    "summary": "A compact experimentation platform for product analytics events, built to validate tracking changes before they reached production.",
+    "year": 2021,
+    "impact": 5,
+    "scope": 4,
+    "tech": ["Svelte", "TypeScript", "Playwright"],
+    "biomeID": "meadow"
+  }
+]

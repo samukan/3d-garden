@@ -1,0 +1,237 @@
+:root {
+  color-scheme: light;
+  font-family: "Avenir Next", "Trebuchet MS", sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+  color: #f5f1e8;
+  background:
+    radial-gradient(circle at top, rgba(249, 204, 123, 0.2), transparent 30%),
+    linear-gradient(180deg, #102029 0%, #173328 46%, #23472e 100%);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  width: 100%;
+  min-height: 100%;
+  margin: 0;
+}
+
+body {
+  overflow: hidden;
+}
+
+canvas {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  touch-action: none;
+}
+
+.ui-shell {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  pointer-events: none;
+  padding: 1.2rem;
+}
+
+.top-bar {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.brand-card,
+.project-card,
+.status-badge,
+.quality-toggle {
+  backdrop-filter: blur(18px);
+  background: rgba(17, 22, 20, 0.56);
+  border: 1px solid rgba(248, 230, 193, 0.18);
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.24);
+}
+
+.brand-card {
+  max-width: 24rem;
+  padding: 1rem 1.15rem;
+  border-radius: 1.4rem;
+}
+
+.eyebrow {
+  margin: 0 0 0.45rem;
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  color: #f5c66f;
+}
+
+.brand-card h1,
+.project-card h2 {
+  margin: 0;
+  font-family: Georgia, "Times New Roman", serif;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.brand-copy,
+.project-card p,
+.project-card li,
+.project-meta,
+.project-links {
+  margin: 0.5rem 0 0;
+  color: rgba(250, 244, 234, 0.88);
+}
+
+.controls-cluster {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  pointer-events: auto;
+}
+
+.status-badge {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+  min-height: 3rem;
+  padding: 0.8rem 1rem;
+  border-radius: 999px;
+  font-size: 0.92rem;
+}
+
+.status-badge strong {
+  color: #f5d796;
+}
+
+.quality-toggle {
+  pointer-events: auto;
+  cursor: pointer;
+  border-radius: 999px;
+  padding: 0.9rem 1.1rem;
+  color: #f8f0dd;
+  font: inherit;
+  transition: transform 150ms ease, background 150ms ease;
+}
+
+.quality-toggle:hover,
+.quality-toggle:focus-visible {
+  transform: translateY(-1px);
+  background: rgba(44, 61, 43, 0.74);
+}
+
+.project-card {
+  pointer-events: auto;
+  width: min(28rem, 100%);
+  align-self: flex-end;
+  padding: 1.15rem 1.25rem 1.2rem;
+  border-radius: 1.5rem;
+}
+
+.project-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.65rem;
+  margin-top: 1rem;
+}
+
+.project-metrics span {
+  display: block;
+  font-size: 0.76rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: rgba(245, 215, 150, 0.84);
+}
+
+.project-metrics strong {
+  display: block;
+  margin-top: 0.2rem;
+  font-size: 1rem;
+}
+
+.tech-pill-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin-top: 1rem;
+}
+
+.tech-pill {
+  padding: 0.35rem 0.65rem;
+  border-radius: 999px;
+  background: rgba(245, 198, 111, 0.14);
+  border: 1px solid rgba(245, 198, 111, 0.2);
+  font-size: 0.85rem;
+}
+
+.project-links {
+  display: flex;
+  gap: 0.9rem;
+  margin-top: 1rem;
+}
+
+.project-links a {
+  color: #fff4dd;
+  text-decoration-color: rgba(245, 198, 111, 0.75);
+}
+
+.hint-list {
+  padding-left: 1.05rem;
+  margin: 0.85rem 0 0;
+}
+
+@media (max-width: 900px) {
+  body {
+    overflow: auto;
+  }
+
+  .ui-shell {
+    justify-content: flex-start;
+    gap: 1rem;
+    padding: 1rem;
+  }
+
+  .top-bar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .controls-cluster {
+    justify-content: space-between;
+  }
+
+  .status-badge {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .project-card {
+    align-self: stretch;
+    margin-top: auto;
+  }
+}
+
+@media (max-width: 640px) {
+  .status-badge {
+    flex-direction: column;
+    align-items: flex-start;
+    border-radius: 1.25rem;
+  }
+
+  .project-metrics {
+    grid-template-columns: 1fr;
+  }
+}
