@@ -22,6 +22,8 @@ test("downloads and uploads world layout json files", async ({ page, baseURL }, 
   });
 
   await page.locator("#builder-world-name").fill("File Transfer World");
+  await page.locator("#builder-advanced-tools-toggle").click();
+  await expect(page.locator("#builder-advanced-tools-panel")).toBeVisible();
 
   const [download] = await Promise.all([
     page.waitForEvent("download"),

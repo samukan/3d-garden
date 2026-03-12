@@ -35,6 +35,7 @@ test("boots builder mode and supports basic layout actions", async ({ page, base
   await expect(page.locator("#app-nav-actions")).toBeHidden();
   await expect(page.locator("#builder-back-to-menu")).toBeVisible();
   await expect(page.locator("#builder-camera-nav-toggle")).toBeVisible();
+  await expect(page.locator("#builder-advanced-tools-toggle")).toBeVisible();
   const libraryPanel = page.locator("#builder-library-panel");
   const resizeHandle = page.locator("#builder-resize-handle");
 
@@ -103,6 +104,8 @@ test("boots builder mode and supports basic layout actions", async ({ page, base
   await page.locator("#builder-delete-selected").click();
   await expect(sceneObjectRows).toHaveCount(1);
 
+  await page.locator("#builder-advanced-tools-toggle").click();
+  await expect(page.locator("#builder-advanced-tools-panel")).toBeVisible();
   await page.locator("#builder-export").click();
 
   const exportedLayout = await page.locator("#builder-layout-json").inputValue();

@@ -75,6 +75,8 @@ test("supports undo/redo and editing shortcuts for builder workflows", async ({ 
   const posXAfterRedo = Number(await posXInput.inputValue());
   expect(posXAfterRedo).toBeCloseTo(posXAfterMove, 5);
 
+  await page.locator("#builder-advanced-tools-toggle").click();
+  await expect(page.locator("#builder-advanced-tools-panel")).toBeVisible();
   await page.locator("#builder-export").click();
   const layoutTextarea = page.locator("#builder-layout-json");
   await expect(layoutTextarea).not.toHaveValue("");
@@ -108,6 +110,10 @@ test("supports undo/redo and editing shortcuts for builder workflows", async ({ 
   await expect(worldNameInput).toHaveValue("Focus Guar");
   await expect(sceneObjectRows).toHaveCount(1);
 
+  if (!(await page.locator("#builder-advanced-tools-panel").isVisible())) {
+    await page.locator("#builder-advanced-tools-toggle").click();
+    await expect(page.locator("#builder-advanced-tools-panel")).toBeVisible();
+  }
   await layoutTextarea.fill("abc");
   await layoutTextarea.click();
   await layoutTextarea.press("Backspace");

@@ -114,7 +114,7 @@
 
 .builder-top-bar-main {
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   justify-content: space-between;
   flex-wrap: wrap;
   gap: var(--space-2);
@@ -122,22 +122,18 @@
 
 .builder-top-bar-actions {
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   flex-wrap: wrap;
   gap: var(--space-2);
 }
 
 .builder-top-bar-actions-world {
-  flex: 1 1 34rem;
+  flex: 1 1 auto;
 }
 
 .builder-top-bar-actions-tools {
-  flex: 1 1 18rem;
+  flex: 0 1 auto;
   justify-content: flex-end;
-}
-
-.builder-top-bar-actions-json {
-  flex: 1 1 auto;
 }
 
 .builder-library-panel {
@@ -288,8 +284,7 @@
   }
 
   .builder-top-bar-actions,
-  .builder-top-bar-actions-tools,
-  .builder-top-bar-actions-json {
+  .builder-top-bar-actions-tools {
     width: 100%;
     justify-content: flex-start;
   }
