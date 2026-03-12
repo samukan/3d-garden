@@ -80,6 +80,7 @@
 .menu-primary-actions {
   display: grid;
   justify-items: start;
+  gap: var(--space-2);
   margin-top: var(--space-4);
 }
 
@@ -94,6 +95,15 @@
   align-items: stretch;
   pointer-events: none;
   z-index: var(--z-builder-workspace);
+}
+
+.viewer-panel {
+  position: fixed;
+  left: var(--space-5);
+  bottom: var(--space-5);
+  width: min(24rem, calc(100vw - var(--space-5) * 2));
+  pointer-events: auto;
+  z-index: var(--z-builder-controls);
 }
 
 .builder-top-bar {
@@ -244,6 +254,13 @@
     grid-template-rows: auto auto auto;
     gap: var(--space-3);
     pointer-events: auto;
+  }
+
+  .viewer-panel {
+    position: relative;
+    left: auto;
+    bottom: auto;
+    width: 100%;
   }
 
   .builder-top-bar {

@@ -46,6 +46,8 @@ test("boots viewer mode for a saved world", async ({ page, baseURL }) => {
   await expect(page.locator("#renderCanvas")).toBeVisible();
   await expect(page.locator("#app-edit-link")).toBeVisible();
   await expect(page.locator("#app-title")).toHaveText("Viewer Smoke World");
+  await expect(page.locator("#viewer-panel")).toBeVisible();
+  await expect(page.locator("#viewer-panel")).toHaveAttribute("data-viewer-load-state", "ready");
 
   expect(pageErrors, "No uncaught browser page errors should occur during viewer bootstrap.").toHaveLength(0);
 });

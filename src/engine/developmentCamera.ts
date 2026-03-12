@@ -13,6 +13,7 @@ export interface DevelopmentCameraController {
   camera: ArcRotateCamera;
   overviewFrame: CameraOverviewFrame;
   resetOverview: (logToConsole?: boolean) => void;
+  setOverviewFrame: (frame: CameraOverviewFrame, applyNow?: boolean) => void;
   dispose: () => void;
 }
 
@@ -27,12 +28,19 @@ export function createDevelopmentOverviewFrame(): CameraOverviewFrame {
 
 export function createDevelopmentCamera(scene: Scene, canvas: HTMLCanvasElement): DevelopmentCameraController {
   const overviewFrame = createDevelopmentOverviewFrame();
+  const cloneOverviewFrame = (frame: CameraOverviewFrame): CameraOverviewFrame => ({
+    alpha: frame.alpha,
+    beta: frame.beta,
+    radius: frame.radius,
+    target: frame.target.clone()
+  });
+  const currentOverviewFrame = cloneOverviewFrame(overviewFrame);
   const camera = new ArcRotateCamera(
     "garden-camera",
-    overviewFrame.alpha,
-    overviewFrame.beta,
-    overviewFrame.radius,
-    overviewFrame.target.clone(),
+    currentOverviewFrame.alpha,
+    currentOverviewFrame.beta,
+    currentOverviewFrame.radius,
+    currentOverviewFrame.target.clone(),
     scene
   );
 
@@ -53,10 +61,10 @@ export function createDevelopmentCamera(scene: Scene, canvas: HTMLCanvasElement)
   canvas.addEventListener("contextmenu", preventContextMenu);
 
   const resetOverview = (logToConsole = false): void => {
-    camera.alpha = overviewFrame.alpha;
-    camera.beta = overviewFrame.beta;
-    camera.radius = overviewFrame.radius;
-    camera.setTarget(overviewFrame.target.clone());
+    camera.alpha = currentOverviewFrame.alpha;
+    camera.beta = currentOverviewFrame.beta;
+    camera.radius = currentOverviewFrame.radius;
+    camera.setTarget(currentOverviewFrame.target.clone());
 
     if (logToConsole) {
       console.info("[dev-camera] reset overview", {
@@ -74,8 +82,17 @@ export function createDevelopmentCamera(scene: Scene, canvas: HTMLCanvasElement)
 
   return {
     camera,
-    overviewFrame,
+    overviewFrame: currentOverviewFrame,
     resetOverview,
+    setOverviewFrame: (frame, applyNow = false) => {
+      currentOverviewFrame.alpha = frame.alpha;
+      currentOverviewFrame.beta = frame.beta;
+      currentOverviewFrame.radius = frame.radius;
+      currentOverviewFrame.target = frame.target.clone();
+      if (applyNow) {
+        resetOverview();
+      }
+    },
     dispose: () => {
       canvas.removeEventListener("contextmenu", preventContextMenu);
     }

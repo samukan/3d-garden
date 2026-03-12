@@ -177,6 +177,19 @@ function createWorldDownloadFileName(worldName: string): string {
   return `skill-garden-${slugifyWorldName(worldName)}-${stamp}.json`;
 }
 
+function isEditableTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) {
+    return false;
+  }
+
+  if (target.isContentEditable) {
+    return true;
+  }
+
+  const closestEditable = target.closest("input, textarea, [contenteditable='true']");
+  return Boolean(closestEditable);
+}
+
 export function createBuilderPanel(
   element: HTMLElement,
   sceneBuilder: SceneBuilderController,
@@ -566,6 +579,48 @@ export function createBuilderPanel(
     callback(value);
   };
 
+  const handleShortcutKeyDown = (event: KeyboardEvent): void => {
+    if (event.defaultPrevented || event.repeat) {
+      return;
+    }
+
+    if (isEditableTarget(event.target)) {
+      return;
+    }
+
+    const key = event.key.toLowerCase();
+    const isModifierPressed = event.ctrlKey || event.metaKey;
+
+    if (isModifierPressed && key === "z" && !event.shiftKey) {
+      event.preventDefault();
+      void sceneBuilder.undo();
+      return;
+    }
+
+    if ((isModifierPressed && key === "z" && event.shiftKey) || (isModifierPressed && key === "y")) {
+      event.preventDefault();
+      void sceneBuilder.redo();
+      return;
+    }
+
+    if (isModifierPressed && key === "d") {
+      event.preventDefault();
+      void sceneBuilder.duplicateSelectedObject();
+      return;
+    }
+
+    if (key === "delete" || key === "backspace") {
+      event.preventDefault();
+      sceneBuilder.deleteSelectedObject();
+      return;
+    }
+
+    if (key === "escape") {
+      event.preventDefault();
+      sceneBuilder.selectObjectById(null);
+    }
+  };
+
   paletteElement.addEventListener("click", (event) => {
     const target = event.target;
     const button = target instanceof HTMLElement ? target.closest<HTMLButtonElement>("[data-asset-id]") : null;
@@ -875,12 +930,14 @@ export function createBuilderPanel(
   };
 
   window.addEventListener("resize", handleResize);
+  window.addEventListener("keydown", handleShortcutKeyDown);
   syncResponsiveResizeState();
   setActiveLibraryTab(activeLibraryTab);
   maybeDebugUploadAsset();
   resizeCleanup = () => {
     handlePointerUp();
     window.removeEventListener("resize", handleResize);
+    window.removeEventListener("keydown", handleShortcutKeyDown);
   };
 
   render();

@@ -38,6 +38,10 @@ interface CreateSceneBuilderOptions {
   engine: Engine | WebGPUEngine;
 }
 
+interface ImportLayoutOptions {
+  recordHistory?: boolean;
+}
+
 export interface SceneBuilderController {
   scene: Scene;
   deleteSelectedObject: () => void;
@@ -45,11 +49,13 @@ export interface SceneBuilderController {
   duplicateSelectedObject: () => Promise<void>;
   exportLayout: () => string;
   getSnapshot: () => BuilderSceneSnapshot;
-  importLayout: (input: string) => Promise<{ success: boolean; error?: string }>;
+  importLayout: (input: string, options?: ImportLayoutOptions) => Promise<{ success: boolean; error?: string }>;
   placeAsset: (assetId: AssetId) => Promise<void>;
+  redo: () => Promise<boolean>;
   selectObjectById: (objectId: string | null) => void;
   subscribe: (listener: () => void) => () => void;
   clearUploads: () => Promise<{ success: boolean; removedCount: number; error?: string }>;
+  undo: () => Promise<boolean>;
   uploadAsset: (file: File) => Promise<{ success: boolean; assetId?: AssetId; error?: string }>;
   updateSelectedTransform: (patch: {
     position?: Partial<BuilderVector3>;
@@ -65,6 +71,8 @@ interface PlacedObjectEntry {
 }
 
 interface BuilderDragState {
+  beforeSnapshot: BuilderHistorySnapshot;
+  dragSnapshotRecorded: boolean;
   objectId: string;
   pointerId: number;
   startClientX: number;
@@ -73,6 +81,14 @@ interface BuilderDragState {
   startPosition: BuilderVector3;
   didDrag: boolean;
 }
+
+interface BuilderHistorySnapshot {
+  layoutRecords: BuilderLayoutRecord[];
+  nextObjectNumber: number;
+  selectedObjectId: string | null;
+}
+
+const HISTORY_LIMIT = 100;
 
 export async function createSceneBuilder({
   canvas,
@@ -91,6 +107,9 @@ export async function createSceneBuilder({
   let dragState: BuilderDragState | null = null;
   let suppressNextPick = false;
   let nextObjectNumber = 1;
+  let undoStack: BuilderHistorySnapshot[] = [];
+  let redoStack: BuilderHistorySnapshot[] = [];
+  let historyRestoreInFlight = false;
 
   scene.clearColor = new Color4(0.79, 0.87, 0.92, 1);
   scene.ambientColor = new Color3(0.2, 0.24, 0.22);
@@ -197,6 +216,25 @@ export async function createSceneBuilder({
     rotationY: record.rotationY,
     scale: record.scale
   });
+
+  const captureHistorySnapshot = (): BuilderHistorySnapshot => ({
+    layoutRecords: state.layoutRecords.map(cloneLayoutRecord),
+    nextObjectNumber,
+    selectedObjectId: state.selectedObjectId
+  });
+
+  const clearHistory = (): void => {
+    undoStack = [];
+    redoStack = [];
+  };
+
+  const pushUndoSnapshot = (snapshot: BuilderHistorySnapshot): void => {
+    undoStack.push(snapshot);
+    if (undoStack.length > HISTORY_LIMIT) {
+      undoStack.shift();
+    }
+    redoStack = [];
+  };
 
   const getSelectedObjectSnapshot = (): BuilderSelectedObjectSnapshot | null => {
     if (!state.selectedObjectId) {
@@ -352,6 +390,39 @@ export async function createSceneBuilder({
     state.layoutRecords = [];
     selectionController.setSelection([]);
     state.selectedObjectId = null;
+    dragState = null;
+    suppressNextPick = false;
+  };
+
+  const restoreHistorySnapshot = async (
+    snapshot: BuilderHistorySnapshot,
+    options?: { statusMessage?: string }
+  ): Promise<boolean> => {
+    clearAllObjects();
+
+    let skippedCount = 0;
+    let firstObjectId: string | null = null;
+
+    for (const record of snapshot.layoutRecords.map(cloneLayoutRecord)) {
+      const didInstantiate = await instantiateRecord(record);
+      if (didInstantiate) {
+        firstObjectId ??= record.id;
+      } else {
+        skippedCount += 1;
+      }
+    }
+
+    nextObjectNumber = snapshot.nextObjectNumber;
+    const desiredSelectionId = snapshot.selectedObjectId;
+    const fallbackSelectionId = desiredSelectionId && placedObjects.has(desiredSelectionId)
+      ? desiredSelectionId
+      : firstObjectId;
+    const statusSuffix = skippedCount > 0
+      ? ` ${skippedCount} object${skippedCount === 1 ? "" : "s"} could not be restored.`
+      : "";
+    state.statusMessage = `${options?.statusMessage ?? "History restored."}${statusSuffix}`;
+    setSelection(fallbackSelectionId);
+    return true;
   };
 
   const clearUploads = async (): Promise<{ success: boolean; removedCount: number; error?: string }> => {
@@ -362,6 +433,7 @@ export async function createSceneBuilder({
       const removedIds = await clearUploadedAssets();
       clearAllObjects();
       nextObjectNumber = 1;
+      clearHistory();
 
       if (removedIds.length > 0) {
         await assetLibrary.evictAssets(removedIds);
@@ -437,26 +509,47 @@ export async function createSceneBuilder({
       return false;
     }
 
+    let didChange = false;
+
     if (patch.position) {
       if (typeof patch.position.x === "number" && Number.isFinite(patch.position.x)) {
-        entry.layout.position.x = patch.position.x;
+        if (entry.layout.position.x !== patch.position.x) {
+          entry.layout.position.x = patch.position.x;
+          didChange = true;
+        }
       }
 
       if (typeof patch.position.y === "number" && Number.isFinite(patch.position.y)) {
-        entry.layout.position.y = patch.position.y;
+        if (entry.layout.position.y !== patch.position.y) {
+          entry.layout.position.y = patch.position.y;
+          didChange = true;
+        }
       }
 
       if (typeof patch.position.z === "number" && Number.isFinite(patch.position.z)) {
-        entry.layout.position.z = patch.position.z;
+        if (entry.layout.position.z !== patch.position.z) {
+          entry.layout.position.z = patch.position.z;
+          didChange = true;
+        }
       }
     }
 
     if (typeof patch.rotationY === "number" && Number.isFinite(patch.rotationY)) {
-      entry.layout.rotationY = patch.rotationY;
+      if (entry.layout.rotationY !== patch.rotationY) {
+        entry.layout.rotationY = patch.rotationY;
+        didChange = true;
+      }
     }
 
     if (typeof patch.scale === "number" && Number.isFinite(patch.scale) && patch.scale > 0) {
-      entry.layout.scale = patch.scale;
+      if (entry.layout.scale !== patch.scale) {
+        entry.layout.scale = patch.scale;
+        didChange = true;
+      }
+    }
+
+    if (!didChange) {
+      return false;
     }
 
     applyLayoutToEntry(entry);
@@ -479,6 +572,10 @@ export async function createSceneBuilder({
   };
 
   const placeAsset = async (assetId: AssetId): Promise<void> => {
+    if (historyRestoreInFlight) {
+      return;
+    }
+
     if (!state.isReady) {
       state.statusMessage = "Builder assets are still loading.";
       notify();
@@ -499,6 +596,7 @@ export async function createSceneBuilder({
       rotationY: 0,
       scale: 1
     };
+    const beforeSnapshot = captureHistorySnapshot();
 
     state.statusMessage = `Loading ${definition.label}...`;
     notify();
@@ -509,6 +607,7 @@ export async function createSceneBuilder({
     }
 
     state.statusMessage = `Placed ${definition.label}.`;
+    pushUndoSnapshot(beforeSnapshot);
     setSelection(record.id);
   };
 
@@ -521,15 +620,27 @@ export async function createSceneBuilder({
       return;
     }
 
-    updateObjectTransform(state.selectedObjectId, patch);
-  };
-
-  const deleteObjectById = (objectId: string): void => {
-    const entry = placedObjects.get(objectId);
-    if (!entry) {
+    const beforeSnapshot = captureHistorySnapshot();
+    const didChange = updateObjectTransform(state.selectedObjectId, patch);
+    if (!didChange) {
       return;
     }
 
+    pushUndoSnapshot(beforeSnapshot);
+  };
+
+  const deleteObjectByIdInternal = (objectId: string, options?: { recordHistory?: boolean }): boolean => {
+    if (historyRestoreInFlight) {
+      return false;
+    }
+
+    const entry = placedObjects.get(objectId);
+    if (!entry) {
+      return false;
+    }
+
+    const beforeSnapshot = options?.recordHistory === false ? null : captureHistorySnapshot();
+    const removedIndex = state.layoutRecords.findIndex((record) => record.id === objectId);
     const label = getAssetLabel(assetDefinitions, entry.layout.assetId);
     const wasSelected = state.selectedObjectId === objectId;
 
@@ -540,13 +651,23 @@ export async function createSceneBuilder({
     disposeEntry(entry);
     state.layoutRecords = state.layoutRecords.filter((record) => record.id !== objectId);
     state.statusMessage = `Deleted ${label}.`;
+    if (beforeSnapshot) {
+      pushUndoSnapshot(beforeSnapshot);
+    }
 
     if (wasSelected) {
-      setSelection(null);
-      return;
+      const nextSelection =
+        state.layoutRecords[removedIndex]?.id ?? state.layoutRecords[Math.max(0, removedIndex - 1)]?.id ?? null;
+      setSelection(nextSelection);
+      return true;
     }
 
     notify();
+    return true;
+  };
+
+  const deleteObjectById = (objectId: string): void => {
+    deleteObjectByIdInternal(objectId);
   };
 
   const deleteSelectedObject = (): void => {
@@ -554,10 +675,14 @@ export async function createSceneBuilder({
       return;
     }
 
-    deleteObjectById(state.selectedObjectId);
+    deleteObjectByIdInternal(state.selectedObjectId);
   };
 
   const duplicateSelectedObject = async (): Promise<void> => {
+    if (historyRestoreInFlight) {
+      return;
+    }
+
     if (!state.selectedObjectId) {
       return;
     }
@@ -576,6 +701,7 @@ export async function createSceneBuilder({
         z: Number((source.layout.position.z + 2).toFixed(3))
       }
     };
+    const beforeSnapshot = captureHistorySnapshot();
 
     const didInstantiate = await instantiateRecord(duplicateRecord);
     if (!didInstantiate) {
@@ -583,12 +709,23 @@ export async function createSceneBuilder({
     }
 
     state.statusMessage = `Duplicated ${getAssetLabel(assetDefinitions, duplicateRecord.assetId)}.`;
+    pushUndoSnapshot(beforeSnapshot);
     setSelection(duplicateRecord.id);
   };
 
   const exportLayout = (): string => serializeBuilderLayout(state.layoutRecords.map(cloneLayoutRecord));
 
-  const importLayout = async (input: string): Promise<{ success: boolean; error?: string }> => {
+  const importLayout = async (
+    input: string,
+    options?: ImportLayoutOptions
+  ): Promise<{ success: boolean; error?: string }> => {
+    if (historyRestoreInFlight) {
+      return {
+        success: false,
+        error: "History restore is in progress."
+      };
+    }
+
     const result = parseBuilderLayoutDocument(input);
 
     if (!result.success) {
@@ -600,6 +737,7 @@ export async function createSceneBuilder({
       };
     }
 
+    const beforeSnapshot = options?.recordHistory === false ? null : captureHistorySnapshot();
     clearAllObjects();
 
     let importedCount = 0;
@@ -643,11 +781,64 @@ export async function createSceneBuilder({
     state.statusMessage = skippedCount
       ? `Imported ${importedCount} object${importedCount === 1 ? "" : "s"}. Skipped ${skippedCount} unavailable asset${skippedCount === 1 ? "" : "s"}.${missingSuffix}${failedSuffix}`
       : `Imported ${importedCount} object${importedCount === 1 ? "" : "s"}.`;
+    if (beforeSnapshot) {
+      pushUndoSnapshot(beforeSnapshot);
+    }
     setSelection(firstImportedObjectId);
 
     return {
       success: true
     };
+  };
+
+  const undo = async (): Promise<boolean> => {
+    if (historyRestoreInFlight || undoStack.length === 0) {
+      return false;
+    }
+
+    const targetSnapshot = undoStack.pop();
+    if (!targetSnapshot) {
+      return false;
+    }
+
+    const currentSnapshot = captureHistorySnapshot();
+    redoStack.push(currentSnapshot);
+    if (redoStack.length > HISTORY_LIMIT) {
+      redoStack.shift();
+    }
+
+    historyRestoreInFlight = true;
+    try {
+      await restoreHistorySnapshot(targetSnapshot, { statusMessage: "Undo complete." });
+      return true;
+    } finally {
+      historyRestoreInFlight = false;
+    }
+  };
+
+  const redo = async (): Promise<boolean> => {
+    if (historyRestoreInFlight || redoStack.length === 0) {
+      return false;
+    }
+
+    const targetSnapshot = redoStack.pop();
+    if (!targetSnapshot) {
+      return false;
+    }
+
+    const currentSnapshot = captureHistorySnapshot();
+    undoStack.push(currentSnapshot);
+    if (undoStack.length > HISTORY_LIMIT) {
+      undoStack.shift();
+    }
+
+    historyRestoreInFlight = true;
+    try {
+      await restoreHistorySnapshot(targetSnapshot, { statusMessage: "Redo complete." });
+      return true;
+    } finally {
+      historyRestoreInFlight = false;
+    }
   };
 
   const uploadAsset = async (file: File): Promise<{ success: boolean; assetId?: AssetId; error?: string }> => {
@@ -687,6 +878,10 @@ export async function createSceneBuilder({
     const pointerEvent = pointerInfo.event as PointerEvent | undefined;
 
     if (pointerInfo.type === PointerEventTypes.POINTERDOWN) {
+      if (historyRestoreInFlight) {
+        return;
+      }
+
       if (!pointerEvent || pointerEvent.button !== 0) {
         return;
       }
@@ -704,6 +899,8 @@ export async function createSceneBuilder({
 
       setSelection(objectId);
       dragState = {
+        beforeSnapshot: captureHistorySnapshot(),
+        dragSnapshotRecorded: false,
         objectId,
         pointerId: pointerEvent.pointerId,
         startClientX: pointerEvent.clientX,
@@ -765,6 +962,10 @@ export async function createSceneBuilder({
       const movedEntry = placedObjects.get(completedDrag.objectId);
       if (movedEntry) {
         state.statusMessage = `Moved ${getAssetLabel(assetDefinitions, movedEntry.layout.assetId)}.`;
+        if (!completedDrag.dragSnapshotRecorded) {
+          pushUndoSnapshot(completedDrag.beforeSnapshot);
+          completedDrag.dragSnapshotRecorded = true;
+        }
         notify();
       }
 
@@ -819,6 +1020,7 @@ export async function createSceneBuilder({
     getSnapshot,
     importLayout,
     placeAsset,
+    redo,
     selectObjectById,
     subscribe: (listener) => {
       listeners.add(listener);
@@ -827,6 +1029,7 @@ export async function createSceneBuilder({
       };
     },
     clearUploads,
+    undo,
     uploadAsset,
     updateSelectedTransform
   };

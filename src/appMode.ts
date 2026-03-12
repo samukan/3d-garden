@@ -4,6 +4,7 @@ export interface AppRoute {
   mode: AppMode;
   notice: string | null;
   worldId: string | null;
+  worldJsonId: string | null;
 }
 
 const persistentQueryKeys = ["debugBrowserLogs", "renderer"] as const;
@@ -26,6 +27,11 @@ function sanitizeNotice(notice: string | undefined): string | null {
   return trimmed ? trimmed : null;
 }
 
+function sanitizeWorldJsonId(worldJsonId: string | undefined): string | null {
+  const trimmed = worldJsonId?.trim();
+  return trimmed ? trimmed : null;
+}
+
 function resolveAppRoute(): AppRoute {
   if (typeof window !== "undefined") {
     const searchParams = new URLSearchParams(window.location.search);
@@ -36,7 +42,8 @@ function resolveAppRoute(): AppRoute {
       return {
         mode: queryMode,
         notice: sanitizeNotice(searchParams.get("notice") ?? undefined),
-        worldId: sanitizeWorldId(searchParams.get("worldId") ?? undefined)
+        worldId: sanitizeWorldId(searchParams.get("worldId") ?? undefined),
+        worldJsonId: sanitizeWorldJsonId(searchParams.get("worldJsonId") ?? undefined)
       };
     }
   }
@@ -44,7 +51,8 @@ function resolveAppRoute(): AppRoute {
   return {
     mode: parseAppMode(import.meta.env.VITE_APP_MODE) ?? "menu",
     notice: null,
-    worldId: null
+    worldId: null,
+    worldJsonId: null
   };
 }
 
@@ -55,6 +63,7 @@ export function buildAppHref(route: {
   mode: AppMode;
   notice?: string | null;
   worldId?: string | null;
+  worldJsonId?: string | null;
 }): string {
   const params = new URLSearchParams();
 
@@ -72,6 +81,8 @@ export function buildAppHref(route: {
 
   if (route.worldId) {
     params.set("worldId", route.worldId);
+  } else if (route.worldJsonId) {
+    params.set("worldJsonId", route.worldJsonId);
   }
 
   const notice = sanitizeNotice(route.notice ?? undefined);
@@ -86,6 +97,7 @@ export function navigateToRoute(route: {
   mode: AppMode;
   notice?: string | null;
   worldId?: string | null;
+  worldJsonId?: string | null;
 }): void {
   if (typeof window === "undefined") {
     return;

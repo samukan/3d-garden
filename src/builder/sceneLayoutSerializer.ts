@@ -20,9 +20,25 @@ const builderLayoutDocumentSchema = z.object({
   objects: z.array(builderLayoutRecordSchema)
 });
 
+const versionedBuilderLayoutDocumentSchema = z.object({
+  version: z.literal(1),
+  objects: z.array(builderLayoutRecordSchema)
+});
+
 export function serializeBuilderLayout(records: BuilderLayoutRecord[]): string {
   return JSON.stringify(
     {
+      objects: records
+    },
+    null,
+    2
+  );
+}
+
+export function serializeVersionedBuilderLayout(records: BuilderLayoutRecord[]): string {
+  return JSON.stringify(
+    {
+      version: 1,
       objects: records
     },
     null,
@@ -44,7 +60,10 @@ export function parseBuilderLayoutDocument(input: string):
     };
   }
 
-  const result = builderLayoutDocumentSchema.safeParse(parsedJson);
+  const legacyResult = builderLayoutDocumentSchema.safeParse(parsedJson);
+  const result = legacyResult.success
+    ? legacyResult
+    : versionedBuilderLayoutDocumentSchema.safeParse(parsedJson);
 
   if (!result.success) {
     return {
@@ -67,6 +86,8 @@ export function parseBuilderLayoutDocument(input: string):
 
   return {
     success: true,
-    value: result.data
+    value: {
+      objects: result.data.objects
+    }
   };
 }

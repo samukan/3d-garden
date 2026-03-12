@@ -44,7 +44,8 @@ test("supports save -> view -> edit roundtrip", async ({ page, baseURL }) => {
   await page.locator("#builder-view-world").click();
   await expect(page.locator("#app-edit-link")).toBeVisible();
   await expect(page.locator("#app-title")).toHaveText(worldName);
-  await expect(page.locator("#app-copy")).toContainText("Read-only view of a saved builder world");
+  await expect(page.locator("#viewer-panel")).toBeVisible();
+  await expect(page.locator("#viewer-panel")).toHaveAttribute("data-viewer-load-state", "ready");
 
   await page.locator("#app-edit-link").click();
   await expect(page.locator("#builder-workspace")).toBeVisible();

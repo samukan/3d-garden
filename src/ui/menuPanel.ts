@@ -16,6 +16,10 @@ export interface CreateMenuPanelOptions {
   onDeleteWorld: (worldId: string) => void;
   onEditWorld: (worldId: string) => void;
   onViewWorld: (worldId: string) => void;
+  onOpenWorldJsonInViewer: (input: {
+    fileName: string;
+    content: string;
+  }) => Promise<{ success: boolean; error?: string }>;
   state: MenuPanelState;
 }
 
@@ -85,6 +89,8 @@ export function createMenuPanel(element: HTMLElement, options: CreateMenuPanelOp
           <p class="menu-panel-copy">Saved worlds are the main experience here. Use the builder when you want to start something fresh.</p>
           <div class="menu-primary-actions">
             <button id="menu-build-new" class="ui-button menu-secondary-button" type="button">Build New World</button>
+            <button id="menu-open-json-viewer" class="ui-button menu-secondary-button" type="button">Open JSON In Viewer</button>
+            <input id="menu-open-json-input" type="file" accept=".json,application/json" hidden />
           </div>
           ${state.notice ? `<p class="menu-notice">${escapeHtml(state.notice)}</p>` : ""}
         </section>
@@ -101,6 +107,13 @@ export function createMenuPanel(element: HTMLElement, options: CreateMenuPanelOp
     const buildNewButton = target.closest<HTMLButtonElement>("#menu-build-new");
     if (buildNewButton) {
       options.onBuildNew();
+      return;
+    }
+
+    const openJsonButton = target.closest<HTMLButtonElement>("#menu-open-json-viewer");
+    if (openJsonButton) {
+      const input = element.querySelector<HTMLInputElement>("#menu-open-json-input");
+      input?.click();
       return;
     }
 
@@ -131,13 +144,57 @@ export function createMenuPanel(element: HTMLElement, options: CreateMenuPanelOp
     }
   };
 
+  const handleChange = (event: Event): void => {
+    const target = event.target;
+    if (!(target instanceof HTMLInputElement) || target.id !== "menu-open-json-input") {
+      return;
+    }
+
+    const file = target.files?.[0];
+    if (!file) {
+      return;
+    }
+
+    void file
+      .text()
+      .then((content) =>
+        options.onOpenWorldJsonInViewer({
+          fileName: file.name,
+          content
+        })
+      )
+      .then((result) => {
+        if (result.success) {
+          return;
+        }
+
+        state = {
+          ...state,
+          notice: result.error ?? "World JSON could not be opened."
+        };
+        render();
+      })
+      .catch((error) => {
+        state = {
+          ...state,
+          notice: error instanceof Error ? error.message : "World JSON could not be opened."
+        };
+        render();
+      })
+      .finally(() => {
+        target.value = "";
+      });
+  };
+
   element.hidden = false;
   render();
   element.addEventListener("click", handleClick);
+  element.addEventListener("change", handleChange);
 
   return {
     dispose: () => {
       element.removeEventListener("click", handleClick);
+      element.removeEventListener("change", handleChange);
     },
     setState: (nextState) => {
       state = { ...nextState };

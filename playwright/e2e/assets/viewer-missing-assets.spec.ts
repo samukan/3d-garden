@@ -44,7 +44,8 @@ test("shows missing-asset diagnostics in viewer mode", async ({ page, baseURL })
   });
 
   await expect(page.locator("#app-title")).toHaveText("Missing Asset World");
-  await expect(page.locator("#app-copy")).toContainText("could not be loaded");
+  await expect(page.locator("#viewer-panel")).toHaveAttribute("data-viewer-load-state", "partial");
+  await expect(page.locator("#viewer-panel")).toContainText("Missing asset");
 
   expect(pageErrors, "No uncaught browser page errors should occur while showing missing-asset diagnostics.").toHaveLength(0);
 });

@@ -3,7 +3,6 @@ import "./style.css";
 import { activeAppRoute, buildAppHref, navigateToRoute } from "./appMode";
 import { parseBuilderLayoutDocument, serializeBuilderLayout } from "./builder/sceneLayoutSerializer";
 import { createSceneBuilder } from "./builder/sceneBuilder";
-import { createLayoutScene } from "./engine/createLayoutScene";
 import { initEngine } from "./engine/initEngine";
 import { createBuilderPanel } from "./ui/builderPanel";
 import { createMenuPanel } from "./ui/menuPanel";
@@ -15,7 +14,9 @@ import {
   listSavedWorlds,
   saveSavedWorld
 } from "./storage/savedWorldStore";
+import { saveViewerDraft } from "./storage/viewerDraftStore";
 import { browserDebugError, logBrowserDebug } from "./utils/browserDebug";
+import { bootstrapViewerMode } from "./viewer/bootstrapViewerMode";
 
 const EMPTY_LAYOUT_JSON = serializeBuilderLayout([]);
 
@@ -46,6 +47,7 @@ async function bootstrap(): Promise<void> {
   const statusElement = document.querySelector<HTMLElement>("#status-badge");
   const menuPanelElement = document.querySelector<HTMLElement>("#menu-panel");
   const builderWorkspace = document.querySelector<HTMLElement>("#builder-workspace");
+  const viewerPanelElement = document.querySelector<HTMLElement>("#viewer-panel");
   const navActionsElement = document.querySelector<HTMLElement>("#app-nav-actions");
   const editLinkElement = document.querySelector<HTMLAnchorElement>("#app-edit-link");
   const menuLinkElement = document.querySelector<HTMLAnchorElement>("#app-menu-link");
@@ -56,7 +58,7 @@ async function bootstrap(): Promise<void> {
   const appTitle = document.querySelector<HTMLElement>("#app-title");
   const appCopy = document.querySelector<HTMLElement>("#app-copy");
 
-  if (!canvas || !statusElement || !menuPanelElement || !builderWorkspace || !navActionsElement || !editLinkElement || !menuLinkElement || !infoToggleButton || !appElement || !brandCardElement || !appEyebrow || !appTitle || !appCopy) {
+  if (!canvas || !statusElement || !menuPanelElement || !builderWorkspace || !viewerPanelElement || !navActionsElement || !editLinkElement || !menuLinkElement || !infoToggleButton || !appElement || !brandCardElement || !appEyebrow || !appTitle || !appCopy) {
     throw new Error("Skill Garden could not find the required DOM elements.");
   }
 
@@ -86,6 +88,7 @@ async function bootstrap(): Promise<void> {
     infoToggleButton.hidden = true;
     setInfoPanelState(true);
     builderWorkspace.hidden = true;
+    viewerPanelElement.hidden = true;
 
     const getMenuState = (nextNotice: string | null) => {
       const worlds = listSavedWorlds();
@@ -121,6 +124,25 @@ async function bootstrap(): Promise<void> {
       onViewWorld: (worldId) => {
         navigateToRoute({ mode: "viewer", worldId });
       },
+      onOpenWorldJsonInViewer: async ({ fileName, content }) => {
+        const parsedLayout = parseBuilderLayoutDocument(content);
+        if (!parsedLayout.success) {
+          return {
+            success: false,
+            error: `${fileName} could not be opened: ${parsedLayout.error}`
+          };
+        }
+
+        const nextName = fileName.replace(/\.json$/i, "").trim() || "Imported World";
+        const draft = saveViewerDraft({
+          layout: content,
+          name: nextName,
+          objectCount: parsedLayout.value.objects.length
+        });
+
+        navigateToRoute({ mode: "viewer", worldJsonId: draft.id });
+        return { success: true };
+      },
       state: {
         ...getMenuState(notice)
       }
@@ -134,8 +156,10 @@ async function bootstrap(): Promise<void> {
     return;
   }
 
-  let savedWorld = activeAppRoute.worldId ? getSavedWorld(activeAppRoute.worldId) : null;
-  if ((activeAppRoute.mode === "builder" || activeAppRoute.mode === "viewer") && activeAppRoute.worldId && !savedWorld) {
+  let savedWorld = activeAppRoute.mode === "builder" && activeAppRoute.worldId
+    ? getSavedWorld(activeAppRoute.worldId)
+    : null;
+  if (activeAppRoute.mode === "builder" && activeAppRoute.worldId && !savedWorld) {
     renderMenuMode("That saved world could not be found.");
     return;
   }
@@ -151,7 +175,8 @@ async function bootstrap(): Promise<void> {
   const statusBar = createStatusBar(statusElement);
   logBrowserDebug("bootstrap:dom-ready", {
     appMode: activeAppRoute.mode,
-    worldId: activeAppRoute.worldId
+    worldId: activeAppRoute.worldId,
+    worldJsonId: activeAppRoute.worldJsonId
   });
 
   const { engine, renderer } = await initEngine(canvas);
@@ -167,6 +192,7 @@ async function bootstrap(): Promise<void> {
   navActionsElement.hidden = true;
   brandCardElement.hidden = false;
   infoToggleButton.hidden = true;
+  viewerPanelElement.hidden = true;
 
   let sceneToRender: { render: () => void };
 
@@ -187,6 +213,7 @@ async function bootstrap(): Promise<void> {
     infoToggleButton.hidden = false;
     setInfoPanelState(false);
     builderWorkspace.hidden = false;
+    viewerPanelElement.hidden = true;
     menuPanelElement.hidden = true;
     const builderController = await createSceneBuilder({
       canvas,
@@ -201,7 +228,7 @@ async function bootstrap(): Promise<void> {
       : "New world. Save it when you are ready to reopen it later.";
 
     if (savedWorld) {
-      await builderController.importLayout(savedWorld.layout);
+      await builderController.importLayout(savedWorld.layout, { recordHistory: false });
     }
 
     const hasUnsavedChanges = (): boolean => builderController.exportLayout() !== lastSavedLayout;
@@ -336,48 +363,30 @@ async function bootstrap(): Promise<void> {
       appMode: "viewer"
     });
 
-    if (!savedWorld) {
-      renderMenuMode("That saved world could not be found.");
-      return;
-    }
-
-    appEyebrow.textContent = "Saved World Viewer";
-    appTitle.textContent = savedWorld.name;
-    appCopy.textContent = "Read-only view of a saved builder world. Use Edit to return to the builder for changes.";
-
     builderWorkspace.hidden = true;
     menuPanelElement.hidden = true;
     navActionsElement.hidden = false;
-    editLinkElement.hidden = false;
     menuLinkElement.hidden = false;
-    brandCardElement.hidden = false;
+    brandCardElement.hidden = true;
     infoToggleButton.hidden = true;
-    setInfoPanelState(true);
+    setInfoPanelState(false);
+    viewerPanelElement.hidden = false;
 
-    editLinkElement.href = buildAppHref({ mode: "builder", worldId: savedWorld.id });
-    menuLinkElement.href = buildAppHref({ mode: "menu" });
-
-    editLinkElement.textContent = "Edit World";
-    menuLinkElement.textContent = "Back To Menu";
-
-    appCopy.textContent = `Read-only view of a saved builder world with ${savedWorld.objectCount} object${savedWorld.objectCount === 1 ? "" : "s"}. Updated ${formatWorldDate(savedWorld.updatedAt)}.`;
-
-    const parsedWorld = parseBuilderLayoutDocument(savedWorld.layout);
-    if (!parsedWorld.success) {
-      renderMenuMode(`Saved world could not be opened: ${parsedWorld.error}`);
-      return;
-    }
-
-    const viewerController = await createLayoutScene({
+    const viewerController = await bootstrapViewerMode({
       canvas,
       engine,
-      layoutRecords: parsedWorld.value.objects
+      route: activeAppRoute,
+      formatWorldDate,
+      elements: {
+        appEyebrow,
+        appTitle,
+        appCopy,
+        editLinkElement,
+        menuLinkElement,
+        viewerPanelElement
+      }
     });
-    if (viewerController.skippedObjectCount > 0) {
-      const summary = viewerController.skippedAssetIds.slice(0, 3).join(", ");
-      const suffix = viewerController.skippedObjectCount > 3 ? ", ..." : "";
-      appCopy.textContent = `${appCopy.textContent} ${viewerController.skippedObjectCount} object${viewerController.skippedObjectCount === 1 ? "" : "s"} could not be loaded (${summary}${suffix}).`;
-    }
+
     sceneToRender = viewerController.scene;
   } else {
     renderMenuMode("That app mode is no longer available.");
