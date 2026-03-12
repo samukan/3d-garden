@@ -109,11 +109,7 @@ export async function loadNatureKitAssetLibrary(
     return loadingPromise;
   };
 
-  await Promise.all(
-    Array.from(definitionMap.values())
-      .filter((definition) => definition.source.type === "url")
-      .map((definition) => ensureContainerLoaded(definition.id))
-  );
+  // Keep startup non-blocking so a transient asset fetch failure cannot blank the entire builder boot flow.
 
   const instantiateAsset = async (key: AssetId, instanceName: string, position = Vector3.Zero()): Promise<TransformNode> => {
     if (disposed) {
