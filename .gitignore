@@ -19,6 +19,7 @@ pnpm-debug.log*
 # Coverage and test output
 coverage/
 .nyc_output/
+test-results/
 
 # Build caches and temp files
 .cache/

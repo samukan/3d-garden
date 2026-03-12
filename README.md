@@ -1,6 +1,7 @@
 # Skill Garden
 
 Skill Garden is a browser-saved 3D world builder built with Vite, TypeScript, and Babylon.js. Worlds are composed in the builder, saved locally in the browser, then reopened either in the editor or in a read-only viewer from the main menu.
+The builder also supports explicit world layout JSON download/upload so creators can back up and move worlds outside local browser storage.
 
 ## Setup
 

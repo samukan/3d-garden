@@ -138,7 +138,12 @@ const inspectorPanelMarkup = `
       <button id="builder-export" class="ui-button builder-button builder-button-block" type="button">Export</button>
       <button id="builder-import" class="ui-button builder-button builder-button-block" type="button">Import</button>
     </div>
-    <label class="builder-textarea-label" for="builder-layout-json">Paste or inspect layout JSON</label>
+    <div class="builder-action-row builder-action-row-split">
+      <button id="builder-download-world-json" class="ui-button builder-button builder-button-block" type="button">Download JSON</button>
+      <button id="builder-upload-world-json" class="ui-button builder-button builder-button-block" type="button">Upload JSON</button>
+      <input id="builder-upload-world-json-input" type="file" accept=".json,application/json" hidden />
+    </div>
+    <label class="builder-textarea-label" for="builder-layout-json">Manual JSON (paste or inspect)</label>
     <textarea id="builder-layout-json" class="builder-textarea" spellcheck="false"></textarea>
   </div>
   <p id="builder-status" class="builder-status"></p>
@@ -155,6 +160,21 @@ type BuilderLibraryTab = "assets" | "scene";
 
 function formatNumber(value: number): string {
   return Number(value.toFixed(3)).toString();
+}
+
+function slugifyWorldName(value: string): string {
+  const normalized = value
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+
+  return normalized || "untitled-world";
+}
+
+function createWorldDownloadFileName(worldName: string): string {
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+  return `skill-garden-${slugifyWorldName(worldName)}-${stamp}.json`;
 }
 
 export function createBuilderPanel(
@@ -203,6 +223,9 @@ export function createBuilderPanel(
   const deleteButton = inspectorPanel.querySelector<HTMLButtonElement>("#builder-delete");
   const exportButton = inspectorPanel.querySelector<HTMLButtonElement>("#builder-export");
   const importButton = inspectorPanel.querySelector<HTMLButtonElement>("#builder-import");
+  const downloadWorldJsonButton = inspectorPanel.querySelector<HTMLButtonElement>("#builder-download-world-json");
+  const uploadWorldJsonButton = inspectorPanel.querySelector<HTMLButtonElement>("#builder-upload-world-json");
+  const uploadWorldJsonInput = inspectorPanel.querySelector<HTMLInputElement>("#builder-upload-world-json-input");
   const saveWorldButton = inspectorPanel.querySelector<HTMLButtonElement>("#builder-save-world");
   const saveWorldAsButton = inspectorPanel.querySelector<HTMLButtonElement>("#builder-save-world-as");
   const viewWorldButton = inspectorPanel.querySelector<HTMLButtonElement>("#builder-view-world");
@@ -235,6 +258,9 @@ export function createBuilderPanel(
     !deleteButton ||
     !exportButton ||
     !importButton ||
+    !downloadWorldJsonButton ||
+    !uploadWorldJsonButton ||
+    !uploadWorldJsonInput ||
     !saveWorldButton ||
     !saveWorldAsButton ||
     !viewWorldButton ||
@@ -738,6 +764,58 @@ export function createBuilderPanel(
 
   importButton.addEventListener("click", () => {
     void sceneBuilder.importLayout(layoutTextarea.value);
+  });
+
+  downloadWorldJsonButton.addEventListener("click", () => {
+    const layoutJson = sceneBuilder.exportLayout();
+    layoutTextarea.value = layoutJson;
+
+    const fileName = createWorldDownloadFileName(worldNameDraft || worldState.currentWorldName || "untitled-world");
+    const blob = new Blob([layoutJson], { type: "application/json" });
+    const objectUrl = URL.createObjectURL(blob);
+
+    const link = document.createElement("a");
+    link.href = objectUrl;
+    link.download = fileName;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(objectUrl);
+
+    showToast(`Downloaded ${fileName}.`, "success");
+  });
+
+  uploadWorldJsonButton.addEventListener("click", () => {
+    uploadWorldJsonInput.click();
+  });
+
+  uploadWorldJsonInput.addEventListener("change", () => {
+    const file = uploadWorldJsonInput.files?.[0];
+    if (!file) {
+      return;
+    }
+
+    void file
+      .text()
+      .then((content) => {
+        layoutTextarea.value = content;
+        return sceneBuilder.importLayout(content);
+      })
+      .then((result) => {
+        if (!result.success) {
+          showToast(result.error ?? "World file could not be imported.", "error");
+          return;
+        }
+
+        showToast(`Imported ${file.name}.`, "success");
+      })
+      .catch((error) => {
+        const message = error instanceof Error ? error.message : "World file could not be imported.";
+        showToast(message, "error");
+      })
+      .finally(() => {
+        uploadWorldJsonInput.value = "";
+      });
   });
 
   saveWorldButton.addEventListener("click", () => {
