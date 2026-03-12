@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { attachBrowserDebugListeners, normalizeInlineText } from "./browserDebugTestUtils";
+import { attachBrowserDebugListeners, normalizeInlineText } from "../browserDebugTestUtils";
 
 test("forwards browser console output and page errors", async ({ page, baseURL }) => {
   const pageErrors = attachBrowserDebugListeners(page);

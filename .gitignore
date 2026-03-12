@@ -1,6 +1,7 @@
 node_modules/
 dist/
-public/
+public/assets/
+.github/copilot-instructions.md
 
 # Local environment files
 .env
@@ -44,5 +45,3 @@ temp/
 Thumbs.db
 Desktop.ini
 
-# Local docs and metadata you do not want in the repo
-.github/

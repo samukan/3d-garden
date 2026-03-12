@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { attachBrowserDebugListeners, normalizeInlineText } from "./browserDebugTestUtils";
+import { attachBrowserDebugListeners, normalizeInlineText } from "../browserDebugTestUtils";
 
 function extractFirstObjectLayout(exportedLayout: string): {
   id: string;

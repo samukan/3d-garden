@@ -19,12 +19,6 @@ export interface BuilderPaletteItem {
   label: string;
 }
 
-export interface BuilderPaletteGroup {
-  id: string;
-  label: string;
-  items: BuilderPaletteItem[];
-}
-
 export interface BuilderSelectedObjectSnapshot extends BuilderLayoutRecord {
   assetLabel: string;
 }

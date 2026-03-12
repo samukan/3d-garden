@@ -2,7 +2,7 @@ import path from "node:path";
 
 import { expect, test } from "@playwright/test";
 
-import { attachBrowserDebugListeners } from "./browserDebugTestUtils";
+import { attachBrowserDebugListeners } from "../../browserDebugTestUtils";
 
 const UPLOAD_DB_NAME = "skill-garden.uploaded-assets.v1";
 const uploadFilePath = path.join(
@@ -19,7 +19,13 @@ test("uploads a GLB in builder mode", async ({ page, baseURL }) => {
   const pageErrors = attachBrowserDebugListeners(page);
 
   await page.addInitScript((dbName) => {
+    const resetFlag = "__skillGardenUploadDbResetOnce";
+    if (localStorage.getItem(resetFlag) === "1") {
+      return;
+    }
+
     indexedDB.deleteDatabase(dbName);
+    localStorage.setItem(resetFlag, "1");
   }, UPLOAD_DB_NAME);
 
   await page.goto(`${baseURL}/?renderer=webgl&appMode=builder&debugBrowserLogs=1`, {
@@ -40,6 +46,19 @@ test("uploads a GLB in builder mode", async ({ page, baseURL }) => {
   await expect(uploadedAssetButton).toBeVisible();
   await uploadedAssetButton.click();
 
+  await page.locator("#builder-place-asset").click();
+  await expect(page.locator("#builder-status")).toContainText("Placed", {
+    timeout: 10_000
+  });
+
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await expect(page.locator("#builder-status")).toContainText("Builder ready", {
+    timeout: 20_000
+  });
+
+  const persistedAssetButton = page.locator("#builder-palette button", { hasText: "Tree Tall" });
+  await expect(persistedAssetButton).toBeVisible();
+  await persistedAssetButton.click();
   await page.locator("#builder-place-asset").click();
   await expect(page.locator("#builder-status")).toContainText("Placed", {
     timeout: 10_000

@@ -1,4 +1,5 @@
 import type { SavedWorldSummary } from "../builder/builderTypes";
+import { escapeHtml } from "../utils/html";
 
 export interface MenuPanelController {
   dispose: () => void;
@@ -51,15 +52,15 @@ export function createMenuPanel(element: HTMLElement, options: CreateMenuPanelOp
               <article class="menu-world-card">
                 <div class="menu-world-header">
                   <div>
-                    <h3 class="menu-world-title">${world.name}</h3>
+                    <h3 class="menu-world-title">${escapeHtml(world.name)}</h3>
                     <p class="menu-world-meta">${world.objectCount} object${world.objectCount === 1 ? "" : "s"} | Updated ${formatDate(world.updatedAt)}</p>
                     <p class="menu-world-meta">Created ${formatDate(world.createdAt)}</p>
                   </div>
                 </div>
                 <div class="menu-world-actions">
-                  <button class="ui-button builder-button builder-button-primary" type="button" data-menu-action="view" data-world-id="${world.id}">View</button>
-                  <button class="ui-button builder-button" type="button" data-menu-action="edit" data-world-id="${world.id}">Edit</button>
-                  <button class="ui-button builder-button builder-button-danger" type="button" data-menu-action="delete" data-world-id="${world.id}">Delete</button>
+                  <button class="ui-button builder-button builder-button-primary" type="button" data-menu-action="view" data-world-id="${escapeHtml(world.id)}">View</button>
+                  <button class="ui-button builder-button" type="button" data-menu-action="edit" data-world-id="${escapeHtml(world.id)}">Edit</button>
+                  <button class="ui-button builder-button builder-button-danger" type="button" data-menu-action="delete" data-world-id="${escapeHtml(world.id)}">Delete</button>
                 </div>
               </article>
             `
@@ -85,7 +86,7 @@ export function createMenuPanel(element: HTMLElement, options: CreateMenuPanelOp
           <div class="menu-primary-actions">
             <button id="menu-build-new" class="ui-button menu-secondary-button" type="button">Build New World</button>
           </div>
-          ${state.notice ? `<p class="menu-notice">${state.notice}</p>` : ""}
+          ${state.notice ? `<p class="menu-notice">${escapeHtml(state.notice)}</p>` : ""}
         </section>
       </div>
     `;

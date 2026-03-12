@@ -14,5 +14,11 @@ export function getAssetLabel(definitions: Map<AssetId, AssetDefinition>, assetI
 }
 
 export async function loadAssetDefinitions(): Promise<AssetDefinition[]> {
-  return [...getBuiltInAssetDefinitions(), ...(await listUploadedAssetDefinitions())];
+  try {
+    return [...getBuiltInAssetDefinitions(), ...(await listUploadedAssetDefinitions())];
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Uploaded assets are not available.";
+    console.warn(message);
+    return getBuiltInAssetDefinitions();
+  }
 }

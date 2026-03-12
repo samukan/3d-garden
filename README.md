@@ -27,7 +27,7 @@ npm run preview
 
 ## Browser Debugging
 
-The repo includes a Playwright-based debugging harness for agent-driven troubleshooting. It is intentionally a small smoke/debug flow, not a full end-to-end suite.
+The repo includes a Playwright-based debugging harness for agent-driven troubleshooting, plus a focused set of end-to-end regression checks for core builder flows.
 
 ```bash
 npm run playwright:install
@@ -37,7 +37,7 @@ npm run debug:browser
 What it does:
 
 - Starts the Vite dev server automatically on `http://127.0.0.1:4173`.
-- Runs separate menu-mode and builder-mode smoke specs.
+- Runs smoke and stability-focused end-to-end specs (menu, builder, viewer, save/load, persistence recovery, and upload flows).
 - Forces `?renderer=webgl` so automated runs do not depend on WebGPU support.
 - Prints browser `console.*` output and uncaught page errors into terminal stdout/stderr.
 - Fails if startup throws uncaught page errors or key shell UI never appears.
@@ -60,6 +60,13 @@ You can also enable the same logs manually in a browser session with `?debugBrow
 - `src/generation` contains Nature Kit asset loading and manifest data shared by builder and viewer.
 - `src/ui` manages plain HTML overlay components such as the menu, builder panels, and renderer status.
 
+## Test Layout
+
+- `playwright/smoke` contains startup smoke checks for menu, builder, and viewer modes.
+- `playwright/e2e/world-flows` covers core save/view/edit and import guard flows.
+- `playwright/e2e/persistence` covers browser storage recovery behavior.
+- `playwright/e2e/assets` covers upload and missing-asset diagnostics.
+
 ## Renderer Strategy
 
 The app attempts Babylon WebGPU first. If WebGPU is unavailable or initialization fails, it falls back to WebGL automatically. The UI badge shows the active renderer and current FPS.
@@ -77,5 +84,5 @@ The app attempts Babylon WebGPU first. If WebGPU is unavailable or initializatio
 - React or any UI framework.
 - Search, tagging, or timeline controls.
 - Post-processing effects such as bloom.
-- External 3D assets, GLTFs, or texture pipelines.
+- Cloud-backed asset libraries and remote texture pipelines.
 - Backend, CMS, authentication, or deployment automation.

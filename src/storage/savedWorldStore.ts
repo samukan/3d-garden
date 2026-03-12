@@ -4,6 +4,7 @@ import { parseBuilderLayoutDocument } from "../builder/sceneLayoutSerializer";
 import type { SavedWorldRecord, SavedWorldSummary } from "../builder/builderTypes";
 
 const STORAGE_KEY = "skill-garden.saved-worlds.v1";
+let pendingStoreNotice: string | null = null;
 
 const savedWorldRecordSchema = z.object({
   createdAt: z.string().min(1),
@@ -16,9 +17,14 @@ const savedWorldRecordSchema = z.object({
 
 const savedWorldStoreSchema = z.array(savedWorldRecordSchema);
 
-function getStorage(): Storage {
+function setStoreNotice(message: string): void {
+  pendingStoreNotice = message;
+}
+
+function getStorage(): Storage | null {
   if (typeof window === "undefined" || typeof window.localStorage === "undefined") {
-    throw new Error("Saved worlds are only available in a browser environment.");
+    setStoreNotice("Saved worlds are not available in this browser session.");
+    return null;
   }
 
   return window.localStorage;
@@ -43,6 +49,10 @@ function normalizeWorldName(name: string): string {
 
 function readSavedWorldStore(): SavedWorldRecord[] {
   const storage = getStorage();
+  if (!storage) {
+    return [];
+  }
+
   const rawValue = storage.getItem(STORAGE_KEY);
   if (!rawValue) {
     return [];
@@ -53,12 +63,16 @@ function readSavedWorldStore(): SavedWorldRecord[] {
   try {
     parsedJson = JSON.parse(rawValue);
   } catch {
-    throw new Error("Saved worlds data is corrupted.");
+    storage.removeItem(STORAGE_KEY);
+    setStoreNotice("Saved worlds data was corrupted and has been reset.");
+    return [];
   }
 
   const result = savedWorldStoreSchema.safeParse(parsedJson);
   if (!result.success) {
-    throw new Error("Saved worlds data is invalid.");
+    storage.removeItem(STORAGE_KEY);
+    setStoreNotice("Saved worlds data was invalid and has been reset.");
+    return [];
   }
 
   return result.data;
@@ -66,6 +80,10 @@ function readSavedWorldStore(): SavedWorldRecord[] {
 
 function writeSavedWorldStore(records: SavedWorldRecord[]): void {
   const storage = getStorage();
+  if (!storage) {
+    throw new Error("Saved worlds are not available in this browser session.");
+  }
+
   storage.setItem(STORAGE_KEY, JSON.stringify(records));
 }
 
@@ -148,4 +166,10 @@ export function deleteSavedWorld(worldId: string): boolean {
 
   writeSavedWorldStore(nextRecords);
   return true;
+}
+
+export function consumeSavedWorldStoreNotice(): string | null {
+  const notice = pendingStoreNotice;
+  pendingStoreNotice = null;
+  return notice;
 }

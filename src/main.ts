@@ -8,10 +8,24 @@ import { initEngine } from "./engine/initEngine";
 import { createBuilderPanel } from "./ui/builderPanel";
 import { createMenuPanel } from "./ui/menuPanel";
 import { createStatusBar } from "./ui/statusBar";
-import { deleteSavedWorld, getSavedWorld, listSavedWorlds, saveSavedWorld } from "./storage/savedWorldStore";
+import {
+  consumeSavedWorldStoreNotice,
+  deleteSavedWorld,
+  getSavedWorld,
+  listSavedWorlds,
+  saveSavedWorld
+} from "./storage/savedWorldStore";
 import { browserDebugError, logBrowserDebug } from "./utils/browserDebug";
 
 const EMPTY_LAYOUT_JSON = serializeBuilderLayout([]);
+
+function mergeNotice(...messages: Array<string | null | undefined>): string | null {
+  const merged = messages
+    .map((message) => message?.trim())
+    .filter((message): message is string => Boolean(message))
+    .join(" ");
+  return merged || null;
+}
 
 function formatWorldDate(dateValue: string): string {
   const date = new Date(dateValue);
@@ -73,6 +87,15 @@ async function bootstrap(): Promise<void> {
     setInfoPanelState(true);
     builderWorkspace.hidden = true;
 
+    const getMenuState = (nextNotice: string | null) => {
+      const worlds = listSavedWorlds();
+      const storeNotice = consumeSavedWorldStoreNotice();
+      return {
+        notice: mergeNotice(nextNotice, storeNotice),
+        worlds
+      };
+    };
+
     const menuPanel = createMenuPanel(menuPanelElement, {
       onBuildNew: () => {
         navigateToRoute({ mode: "builder" });
@@ -80,10 +103,7 @@ async function bootstrap(): Promise<void> {
       onDeleteWorld: (worldId) => {
         const world = getSavedWorld(worldId);
         if (!world) {
-          menuPanel.setState({
-            notice: "That saved world no longer exists.",
-            worlds: listSavedWorlds()
-          });
+          menuPanel.setState(getMenuState("That saved world no longer exists."));
           return;
         }
 
@@ -93,10 +113,7 @@ async function bootstrap(): Promise<void> {
         }
 
         deleteSavedWorld(worldId);
-        menuPanel.setState({
-          notice: `Deleted ${world.name}.`,
-          worlds: listSavedWorlds()
-        });
+        menuPanel.setState(getMenuState(`Deleted ${world.name}.`));
       },
       onEditWorld: (worldId) => {
         navigateToRoute({ mode: "builder", worldId });
@@ -105,8 +122,7 @@ async function bootstrap(): Promise<void> {
         navigateToRoute({ mode: "viewer", worldId });
       },
       state: {
-        notice,
-        worlds: listSavedWorlds()
+        ...getMenuState(notice)
       }
     });
 
@@ -357,6 +373,11 @@ async function bootstrap(): Promise<void> {
       engine,
       layoutRecords: parsedWorld.value.objects
     });
+    if (viewerController.skippedObjectCount > 0) {
+      const summary = viewerController.skippedAssetIds.slice(0, 3).join(", ");
+      const suffix = viewerController.skippedObjectCount > 3 ? ", ..." : "";
+      appCopy.textContent = `${appCopy.textContent} ${viewerController.skippedObjectCount} object${viewerController.skippedObjectCount === 1 ? "" : "s"} could not be loaded (${summary}${suffix}).`;
+    }
     sceneToRender = viewerController.scene;
   } else {
     renderMenuMode("That app mode is no longer available.");

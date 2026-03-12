@@ -1,6 +1,7 @@
 import type { SceneBuilderController } from "../builder/sceneBuilder";
 import type { BuilderSceneSnapshot } from "../builder/builderTypes";
 import type { AssetId } from "../generation/natureKitAssetManifest";
+import { escapeHtml } from "../utils/html";
 
 export interface BuilderPanelController {
   dispose: () => void;
@@ -118,7 +119,7 @@ const inspectorPanelMarkup = `
         <input id="builder-pos-z" type="number" step="0.1" />
       </label>
       <label class="builder-field">
-        <span>Rotation Y</span>
+        <span>Rotation Y (deg)</span>
         <input id="builder-rot-y" type="number" step="0.1" />
       </label>
       <label class="builder-field builder-field-full">
@@ -317,7 +318,7 @@ export function createBuilderPanel(
     }
 
     rolloutContentElement.innerHTML = `
-      <p class="builder-rollout-title">${selectedItem.label}</p>
+      <p class="builder-rollout-title">${escapeHtml(selectedItem.label)}</p>
       <button id="builder-place-asset" class="ui-button builder-button builder-button-primary builder-button-block" type="button">Add to scene</button>
     `;
     
@@ -344,7 +345,7 @@ export function createBuilderPanel(
     }
 
     rolloutContentElement.innerHTML = `
-      <p class="builder-rollout-title">${selectedObject.assetLabel}</p>
+      <p class="builder-rollout-title">${escapeHtml(selectedObject.assetLabel)}</p>
       <button id="builder-delete-selected" class="ui-button builder-button builder-button-danger builder-button-block" type="button">Delete</button>
     `;
     
@@ -363,8 +364,8 @@ export function createBuilderPanel(
     paletteElement.innerHTML = snapshot.palette
       .map(
         (item) =>
-          `<button class="builder-palette-item${item.assetId === selectedAssetId ? " is-selected" : ""}" type="button" data-asset-id="${item.assetId}" aria-pressed="${item.assetId === selectedAssetId}">
-            ${item.label}
+          `<button class="builder-palette-item${item.assetId === selectedAssetId ? " is-selected" : ""}" type="button" data-asset-id="${escapeHtml(item.assetId)}" aria-pressed="${item.assetId === selectedAssetId}">
+            ${escapeHtml(item.label)}
           </button>`
       )
       .join("");
@@ -387,8 +388,8 @@ export function createBuilderPanel(
         const isSelected = object.id === snapshot.selectedObjectId;
 
         return `
-          <button class="builder-scene-object-item${isSelected ? " is-selected" : ""}" type="button" data-object-id="${object.id}">
-            ${assetLabel}
+          <button class="builder-scene-object-item${isSelected ? " is-selected" : ""}" type="button" data-object-id="${escapeHtml(object.id)}">
+            ${escapeHtml(assetLabel)}
           </button>
         `;
       })
@@ -410,9 +411,9 @@ export function createBuilderPanel(
     } else {
       selectionSummaryElement.innerHTML = `
         <div class="builder-selection-card">
-          <p class="builder-selection-title">${selection.assetLabel}</p>
-          <p class="builder-selection-meta">${selection.id}</p>
-          <p class="builder-selection-meta">${selection.assetId}</p>
+          <p class="builder-selection-title">${escapeHtml(selection.assetLabel)}</p>
+          <p class="builder-selection-meta">${escapeHtml(selection.id)}</p>
+          <p class="builder-selection-meta">${escapeHtml(selection.assetId)}</p>
         </div>
       `;
     }
@@ -511,7 +512,7 @@ export function createBuilderPanel(
 
     toastHost.innerHTML = `
       <div class="builder-toast builder-toast-${variant}" role="status">
-        <span>${message}</span>
+        <span>${escapeHtml(message)}</span>
         <button class="builder-toast-close" type="button" aria-label="Dismiss notification">x</button>
       </div>
     `;

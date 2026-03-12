@@ -1,7 +1,6 @@
 import type { BuilderLayoutRecord } from "./builderTypes";
 
 export interface BuilderSceneRuntimeState {
-  isPanelOpen: boolean;
   isReady: boolean;
   selectedObjectId: string | null;
   layoutRecords: BuilderLayoutRecord[];
@@ -10,7 +9,6 @@ export interface BuilderSceneRuntimeState {
 
 export function createBuilderSceneState(): BuilderSceneRuntimeState {
   return {
-    isPanelOpen: true,
     isReady: false,
     selectedObjectId: null,
     layoutRecords: [],

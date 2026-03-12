@@ -18,6 +18,7 @@ import { createAssetDefinitionMap, getAssetLabel, loadAssetDefinitions } from ".
 import { loadNatureKitAssetLibrary } from "../generation/NatureKitAssetLoader";
 import type { AssetDefinition, AssetId } from "../generation/natureKitAssetManifest";
 import { clearUploadedAssets, deleteUploadedAsset, saveUploadedAsset } from "../storage/uploadedAssetStore";
+import { degreesToRadians } from "../utils/angle";
 import { isBrowserDebugEnabled, logBrowserDebug } from "../utils/browserDebug";
 import { enableMeshVertexColors } from "../utils/meshColors";
 import { getBuilderPalette } from "./builderPalette";
@@ -25,7 +26,7 @@ import { parseBuilderLayoutDocument, serializeBuilderLayout } from "./sceneLayou
 import { createBuilderSceneState } from "./sceneBuilderState";
 import type {
   BuilderLayoutRecord,
-  BuilderPaletteGroup,
+  BuilderPaletteItem,
   BuilderSceneSnapshot,
   BuilderSelectedObjectSnapshot,
   BuilderVector3
@@ -86,7 +87,7 @@ export async function createSceneBuilder({
   const placedObjects = new Map<string, PlacedObjectEntry>();
   const nodeObjectMap = new Map<number, string>();
   let assetDefinitions = createAssetDefinitionMap(await loadAssetDefinitions());
-  let palette: BuilderPaletteGroup[] = getBuilderPalette(Array.from(assetDefinitions.values()));
+  let palette: BuilderPaletteItem[] = getBuilderPalette(Array.from(assetDefinitions.values()));
   let dragState: BuilderDragState | null = null;
   let suppressNextPick = false;
   let nextObjectNumber = 1;
@@ -232,7 +233,7 @@ export async function createSceneBuilder({
     }
 
     entry.root.position.set(entry.layout.position.x, entry.layout.position.y, entry.layout.position.z);
-    entry.root.rotation.set(0, definition.rotationY + entry.layout.rotationY, 0);
+    entry.root.rotation.set(0, definition.rotationY + degreesToRadians(entry.layout.rotationY), 0);
 
     const finalScale = definition.scale * entry.layout.scale;
     entry.root.scaling.set(finalScale, finalScale, finalScale);
@@ -427,7 +428,6 @@ export async function createSceneBuilder({
       scale?: number;
     },
     options?: {
-      clearUploads,
       statusMessage?: string;
       silentStatus?: boolean;
     }
@@ -605,14 +605,24 @@ export async function createSceneBuilder({
     let importedCount = 0;
     let skippedCount = 0;
     let firstImportedObjectId: string | null = null;
+    const missingAssetIds = new Set<string>();
+    const failedAssetLabels = new Set<string>();
 
     for (const record of result.value.objects.map(cloneLayoutRecord)) {
+      const definition = assetDefinitions.get(record.assetId);
+      if (!definition) {
+        skippedCount += 1;
+        missingAssetIds.add(record.assetId);
+        continue;
+      }
+
       const didInstantiate = await instantiateRecord(record);
       if (didInstantiate) {
         importedCount += 1;
         firstImportedObjectId ??= record.id;
       } else {
         skippedCount += 1;
+        failedAssetLabels.add(definition.label);
       }
 
       const suffix = Number(record.id.split("-").at(-1));
@@ -621,8 +631,17 @@ export async function createSceneBuilder({
       }
     }
 
+    const missingSummary = Array.from(missingAssetIds);
+    const failedSummary = Array.from(failedAssetLabels);
+    const missingSuffix = missingSummary.length
+      ? ` Missing: ${missingSummary.slice(0, 3).join(", ")}${missingSummary.length > 3 ? ", ..." : ""}.`
+      : "";
+    const failedSuffix = failedSummary.length
+      ? ` Failed to load: ${failedSummary.slice(0, 3).join(", ")}${failedSummary.length > 3 ? ", ..." : ""}.`
+      : "";
+
     state.statusMessage = skippedCount
-      ? `Imported ${importedCount} object${importedCount === 1 ? "" : "s"}. Skipped ${skippedCount} unavailable asset${skippedCount === 1 ? "" : "s"}.`
+      ? `Imported ${importedCount} object${importedCount === 1 ? "" : "s"}. Skipped ${skippedCount} unavailable asset${skippedCount === 1 ? "" : "s"}.${missingSuffix}${failedSuffix}`
       : `Imported ${importedCount} object${importedCount === 1 ? "" : "s"}.`;
     setSelection(firstImportedObjectId);
 
@@ -775,9 +794,7 @@ export async function createSceneBuilder({
       return;
     }
 
-    if (state.isPanelOpen) {
-      developmentCamera.resetOverview(true);
-    }
+    developmentCamera.resetOverview(true);
   };
 
   window.addEventListener("keydown", handleKeyDown);

@@ -13,6 +13,7 @@ import type { BuilderLayoutRecord } from "../builder/builderTypes";
 import { createDevelopmentCamera } from "./developmentCamera";
 import { createAssetDefinitionMap, loadAssetDefinitions } from "../generation/assetCatalog";
 import { loadNatureKitAssetLibrary } from "../generation/NatureKitAssetLoader";
+import { degreesToRadians } from "../utils/angle";
 import { enableMeshVertexColors } from "../utils/meshColors";
 
 interface CreateLayoutSceneOptions {
@@ -23,6 +24,9 @@ interface CreateLayoutSceneOptions {
 
 export interface LayoutSceneController {
   scene: Scene;
+  loadedObjectCount: number;
+  skippedObjectCount: number;
+  skippedAssetIds: string[];
 }
 
 export async function createLayoutScene({
@@ -63,11 +67,14 @@ export async function createLayoutScene({
 
   const assetDefinitions = createAssetDefinitionMap(await loadAssetDefinitions());
   const assetLibrary = await loadNatureKitAssetLibrary(scene, Array.from(assetDefinitions.values()));
+  let loadedObjectCount = 0;
+  const skippedAssetIds: string[] = [];
 
   for (const record of layoutRecords) {
     const definition = assetDefinitions.get(record.assetId);
     if (!definition) {
       console.warn(`Viewer skipped unavailable asset: ${record.assetId}`);
+      skippedAssetIds.push(record.assetId);
       continue;
     }
 
@@ -83,9 +90,10 @@ export async function createLayoutScene({
     }
 
     root.position.set(record.position.x, record.position.y, record.position.z);
-    root.rotation.set(0, definition.rotationY + record.rotationY, 0);
+    root.rotation.set(0, definition.rotationY + degreesToRadians(record.rotationY), 0);
     const finalScale = definition.scale * record.scale;
     root.scaling.set(finalScale, finalScale, finalScale);
+    loadedObjectCount += 1;
   }
 
   const handleKeyDown = (event: KeyboardEvent): void => {
@@ -104,6 +112,9 @@ export async function createLayoutScene({
   });
 
   return {
-    scene
+    scene,
+    loadedObjectCount,
+    skippedObjectCount: skippedAssetIds.length,
+    skippedAssetIds
   };
 }
