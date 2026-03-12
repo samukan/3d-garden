@@ -5,38 +5,41 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta
       name="description"
-      content="Skill Garden is a recruiter-friendly portfolio where projects grow as a generated 3D garden."
+      content="Skill Garden is a browser-saved 3D world builder with a main menu, editor, and read-only saved-world viewer."
     />
     <title>Skill Garden</title>
   </head>
   <body>
     <div id="app">
-      <canvas id="renderCanvas" aria-label="Skill Garden 3D portfolio scene"></canvas>
+      <canvas id="renderCanvas" aria-label="Skill Garden 3D world scene"></canvas>
 
       <div class="ui-shell">
         <header class="top-bar">
           <div class="brand-card">
-            <p class="eyebrow">Recruiter View</p>
-            <h1>Skill Garden</h1>
-            <p class="brand-copy">
-              A curated 3D portfolio world built around full-stack, AI-oriented, and interactive web work. Begin in the clearing and explore each biome from a single overview.
+            <p id="app-eyebrow" class="eyebrow">Main Menu</p>
+            <h1 id="app-title">Skill Garden</h1>
+            <p id="app-copy" class="brand-copy">
+              Open a browser-saved world in read-only mode, or build a new one when you want to create something fresh.
             </p>
           </div>
 
           <div class="controls-cluster">
+            <div id="app-nav-actions" class="app-nav-actions" hidden>
+              <a id="app-edit-link" class="menu-secondary-button app-nav-link" href="#">Edit World</a>
+              <a id="app-menu-link" class="menu-secondary-button app-nav-link" href="#">Back To Menu</a>
+            </div>
             <div id="status-badge" class="status-badge" aria-live="polite"></div>
-            <button id="quality-toggle" class="quality-toggle" type="button"></button>
           </div>
         </header>
 
-        <aside id="project-card" class="project-card is-compact" aria-live="polite">
-          <p class="eyebrow">Garden Overview</p>
-          <h2>Three project biomes</h2>
-          <p>
-            Start in the central clearing, then explore creative tech on the left, AI systems ahead, and product apps on the right.
-          </p>
-          <p class="panel-note">The world is intentionally staged first. Project details stay available when you select a piece of work.</p>
-        </aside>
+        <main id="menu-panel" class="menu-panel" hidden aria-live="polite"></main>
+
+        <div id="builder-workspace" class="builder-workspace" hidden>
+          <aside id="builder-library-panel" class="builder-shell-panel builder-library-panel" aria-live="polite"></aside>
+          <div id="builder-resize-handle" class="builder-resize-handle" aria-hidden="true"></div>
+          <div class="builder-center-spacer" aria-hidden="true"></div>
+          <aside id="builder-inspector-panel" class="builder-shell-panel builder-inspector-panel" aria-live="polite"></aside>
+        </div>
       </div>
     </div>
 

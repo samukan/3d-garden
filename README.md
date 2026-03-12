@@ -1,6 +1,6 @@
 # Skill Garden
 
-Skill Garden is a static web portfolio MVP built with Vite, TypeScript, and Babylon.js. Portfolio data lives in a local JSON file, is validated at runtime, and generates a 3D garden where each project becomes a stylized procedural tree.
+Skill Garden is a browser-saved 3D world builder built with Vite, TypeScript, and Babylon.js. Worlds are composed in the builder, saved locally in the browser, then reopened either in the editor or in a read-only viewer from the main menu.
 
 ## Setup
 
@@ -21,27 +21,48 @@ npm run preview
 - `npm run dev` starts the Vite development server.
 - `npm run build` runs TypeScript checks and creates a production bundle.
 - `npm run preview` serves the built bundle locally.
+- `npm run playwright:install` installs the Chromium browser used by the browser-debug harness.
+- `npm run debug:browser` starts Vite through Playwright, opens the app in headless Chromium, and forwards browser console output plus uncaught page errors to the terminal.
+- `npm run debug:browser:headed` runs the same browser-debug harness with a visible browser window.
+
+## Browser Debugging
+
+The repo includes a Playwright-based debugging harness for agent-driven troubleshooting. It is intentionally a small smoke/debug flow, not a full end-to-end suite.
+
+```bash
+npm run playwright:install
+npm run debug:browser
+```
+
+What it does:
+
+- Starts the Vite dev server automatically on `http://127.0.0.1:4173`.
+- Runs separate menu-mode and builder-mode smoke specs.
+- Forces `?renderer=webgl` so automated runs do not depend on WebGPU support.
+- Prints browser `console.*` output and uncaught page errors into terminal stdout/stderr.
+- Fails if startup throws uncaught page errors or key shell UI never appears.
+
+If you want the browser visible while debugging:
+
+```bash
+npm run debug:browser:headed
+```
+
+App-side debug logs are gated behind `VITE_DEBUG_BROWSER_LOGS=true`, which the Playwright harness sets automatically. That keeps normal dev sessions quiet while still giving the agent useful browser-side bootstrap logs during automated debugging.
+You can also enable the same logs manually in a browser session with `?debugBrowserLogs=1`, and you can override the mode manually with `?appMode=menu`, `?appMode=builder`, or `?appMode=viewer`.
 
 ## Architecture Overview
 
-- `src/main.ts` bootstraps data validation, Babylon engine selection, UI wiring, and the render loop.
-- `src/engine` contains renderer initialization, scene creation, and scene state.
-- `src/generation` turns portfolio data into biome-aware layout and procedural tree visuals.
-- `src/ui` manages plain HTML overlay components: status, quality toggle, and project details.
-- `src/types` and `src/utils/validation.ts` define the portfolio schema and runtime validation.
-- `src/data/portfolio.json` is the local content source for the garden.
-
-## Garden Rules In The MVP
-
-- `impact` controls tree height.
-- `scope` controls trunk thickness.
-- `tech.length` increases branch count and foliage density.
-- `biomeID` chooses the palette and zone placement.
-- `order` controls placement through the garden progression without showing dates in the UI.
+- `src/main.ts` bootstraps route handling, Babylon engine selection, UI wiring, and the render loop.
+- `src/builder` contains the world editor, selection logic, and layout serialization.
+- `src/storage/savedWorldStore.ts` manages browser-local saved worlds.
+- `src/engine/createLayoutScene.ts` renders saved builder worlds in read-only mode.
+- `src/generation` contains Nature Kit asset loading and manifest data shared by builder and viewer.
+- `src/ui` manages plain HTML overlay components such as the menu, builder panels, and renderer status.
 
 ## Renderer Strategy
 
-The app attempts Babylon WebGPU first. If WebGPU is unavailable or initialization fails, it falls back to WebGL automatically. The UI badge shows the active renderer, current FPS, and quality mode.
+The app attempts Babylon WebGPU first. If WebGPU is unavailable or initialization fails, it falls back to WebGL automatically. The UI badge shows the active renderer and current FPS.
 
 ## Extension Ideas
 
