@@ -35,7 +35,7 @@ export interface BuilderPlacedObjectSnapshot extends BuilderLayoutRecord {
 
 export interface BuilderSceneSnapshot {
   isReady: boolean;
-  palette: BuilderPaletteGroup[];
+  palette: BuilderPaletteItem[];
   objects: BuilderPlacedObjectSnapshot[];
   selectedObjectId: string | null;
   selectedObject: BuilderSelectedObjectSnapshot | null;

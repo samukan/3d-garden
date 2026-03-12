@@ -1,4 +1,4 @@
-function isBrowserDebugEnabled(): boolean {
+export function isBrowserDebugEnabled(): boolean {
   if (import.meta.env.VITE_DEBUG_BROWSER_LOGS === "true") {
     return true;
   }

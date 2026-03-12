@@ -83,10 +83,10 @@ test("boots builder mode and supports basic layout actions", async ({ page, base
   await expect(page.locator("#builder-selection-summary")).toContainText("builder-object-");
 
   await page.locator("#builder-tab-scene").click();
-  const sceneObjectRows = page.locator(".builder-scene-object-row");
+  const sceneObjectRows = page.locator(".builder-scene-object-item");
   await expect(sceneObjectRows).toHaveCount(2);
 
-  await sceneObjectRows.nth(0).locator(".builder-scene-object-select").click();
+  await sceneObjectRows.nth(0).click();
   await expect(page.locator("#builder-selection-summary")).toContainText("builder-object-1");
 
   const posXInput = page.locator("#builder-pos-x");
@@ -100,7 +100,8 @@ test("boots builder mode and supports basic layout actions", async ({ page, base
   await page.locator("button[data-rotate-delta='15']").click();
   await expect(rotYInput).toHaveValue((rotationBefore + 15).toString());
 
-  await sceneObjectRows.nth(1).locator(".builder-scene-object-delete").click();
+  await sceneObjectRows.nth(1).click();
+  await page.locator("#builder-delete-selected").click();
   await expect(sceneObjectRows).toHaveCount(1);
 
   await page.locator("#builder-export").click();

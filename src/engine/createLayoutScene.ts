@@ -6,12 +6,14 @@ import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import { Color3, Color4 } from "@babylonjs/core/Maths/math.color";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder";
+import { Mesh } from "@babylonjs/core/Meshes/mesh";
 import { Scene } from "@babylonjs/core/scene";
 
 import type { BuilderLayoutRecord } from "../builder/builderTypes";
 import { createDevelopmentCamera } from "./developmentCamera";
 import { createAssetDefinitionMap, loadAssetDefinitions } from "../generation/assetCatalog";
 import { loadNatureKitAssetLibrary } from "../generation/NatureKitAssetLoader";
+import { enableMeshVertexColors } from "../utils/meshColors";
 
 interface CreateLayoutSceneOptions {
   canvas: HTMLCanvasElement;
@@ -74,6 +76,11 @@ export async function createLayoutScene({
       `viewer-${record.id}`,
       new Vector3(record.position.x, record.position.y, record.position.z)
     );
+
+    const meshes = root.getChildMeshes(false).filter((mesh): mesh is Mesh => mesh instanceof Mesh);
+    for (const mesh of meshes) {
+      enableMeshVertexColors(mesh, { log: true });
+    }
 
     root.position.set(record.position.x, record.position.y, record.position.z);
     root.rotation.set(0, definition.rotationY + record.rotationY, 0);

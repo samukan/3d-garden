@@ -1,4 +1,5 @@
 import { SceneLoader } from "@babylonjs/core/Loading/sceneLoader";
+import "@babylonjs/loaders/glTF";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { AssetContainer } from "@babylonjs/core/assetContainer";
 import { TransformNode } from "@babylonjs/core/Meshes/transformNode";
@@ -11,6 +12,7 @@ import type { AssetDefinition, AssetId } from "./natureKitAssetManifest";
 export interface NatureKitAssetLibrary {
   instantiateAsset: (key: AssetId, instanceName: string, position?: Vector3) => Promise<TransformNode>;
   preloadAsset: (key: AssetId) => Promise<void>;
+  evictAssets: (keys: AssetId[]) => Promise<void>;
   setDefinitions: (definitions: AssetDefinition[]) => void;
   dispose: () => void;
 }
@@ -22,11 +24,10 @@ export async function loadNatureKitAssetLibrary(
   const containers = new Map<AssetId, AssetContainer>();
   const definitionMap = new Map<AssetId, AssetDefinition>(definitions.map((definition) => [definition.id, definition]));
   const loadingContainers = new Map<AssetId, Promise<AssetContainer>>();
+  const uploadedObjectUrls = new Map<AssetId, string>();
   let disposed = false;
 
   const loadContainer = async (definition: AssetDefinition): Promise<AssetContainer> => {
-    let objectUrl: string | null = null;
-
     try {
       const assetUrl =
         definition.source.type === "url"
@@ -46,13 +47,35 @@ export async function loadNatureKitAssetLibrary(
         throw new Error(`Uploaded asset is no longer available: ${definition.label}.`);
       }
 
-      objectUrl = URL.createObjectURL(blob);
-      return SceneLoader.LoadAssetContainerAsync("", objectUrl, scene);
-    } finally {
-      if (objectUrl) {
-        URL.revokeObjectURL(objectUrl);
+      const existingUrl = uploadedObjectUrls.get(definition.id);
+      const objectUrl = existingUrl ?? URL.createObjectURL(blob);
+      if (!existingUrl) {
+        uploadedObjectUrls.set(definition.id, objectUrl);
       }
+
+      return SceneLoader.LoadAssetContainerAsync("", objectUrl, scene, undefined, ".glb");
     }
+  };
+
+  const revokeUploadedUrl = (key: AssetId): void => {
+    const objectUrl = uploadedObjectUrls.get(key);
+    if (!objectUrl) {
+      return;
+    }
+
+    URL.revokeObjectURL(objectUrl);
+    uploadedObjectUrls.delete(key);
+  };
+
+  const disposeContainer = (key: AssetId): void => {
+    const container = containers.get(key);
+    if (container) {
+      container.dispose();
+      containers.delete(key);
+    }
+
+    loadingContainers.delete(key);
+    revokeUploadedUrl(key);
   };
 
   const ensureContainerLoaded = async (key: AssetId): Promise<AssetContainer> => {
@@ -122,6 +145,20 @@ export async function loadNatureKitAssetLibrary(
     preloadAsset: async (key) => {
       await ensureContainerLoaded(key);
     },
+    evictAssets: async (keys) => {
+      const uniqueKeys = Array.from(new Set(keys));
+      for (const key of uniqueKeys) {
+        const loading = loadingContainers.get(key);
+        if (loading) {
+          try {
+            await loading;
+          } catch {
+            // Ignore failures during eviction.
+          }
+        }
+        disposeContainer(key);
+      }
+    },
     setDefinitions: (nextDefinitions) => {
       for (const definition of nextDefinitions) {
         definitionMap.set(definition.id, definition);
@@ -135,6 +172,10 @@ export async function loadNatureKitAssetLibrary(
       disposed = true;
       containers.forEach((container) => container.dispose());
       containers.clear();
+      loadingContainers.clear();
+      for (const key of Array.from(uploadedObjectUrls.keys())) {
+        revokeUploadedUrl(key);
+      }
     }
   };
 }

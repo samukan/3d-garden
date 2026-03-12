@@ -142,6 +142,16 @@ export async function deleteUploadedAsset(assetId: string): Promise<boolean> {
   return true;
 }
 
+export async function clearUploadedAssets(): Promise<string[]> {
+  const keys = await withStore<IDBValidKey[]>("readonly", (store) => store.getAllKeys());
+  if (keys.length === 0) {
+    return [];
+  }
+
+  await withStore<undefined>("readwrite", (store) => store.clear());
+  return keys.map((key) => String(key));
+}
+
 export async function saveUploadedAsset(file: File): Promise<AssetDefinition> {
   assertGlbFile(file);
 

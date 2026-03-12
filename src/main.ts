@@ -35,15 +35,28 @@ async function bootstrap(): Promise<void> {
   const navActionsElement = document.querySelector<HTMLElement>("#app-nav-actions");
   const editLinkElement = document.querySelector<HTMLAnchorElement>("#app-edit-link");
   const menuLinkElement = document.querySelector<HTMLAnchorElement>("#app-menu-link");
+  const infoToggleButton = document.querySelector<HTMLButtonElement>("#builder-info-toggle");
   const appElement = document.querySelector<HTMLElement>("#app");
   const brandCardElement = document.querySelector<HTMLElement>(".brand-card");
   const appEyebrow = document.querySelector<HTMLElement>("#app-eyebrow");
   const appTitle = document.querySelector<HTMLElement>("#app-title");
   const appCopy = document.querySelector<HTMLElement>("#app-copy");
 
-  if (!canvas || !statusElement || !menuPanelElement || !builderWorkspace || !navActionsElement || !editLinkElement || !menuLinkElement || !appElement || !brandCardElement || !appEyebrow || !appTitle || !appCopy) {
+  if (!canvas || !statusElement || !menuPanelElement || !builderWorkspace || !navActionsElement || !editLinkElement || !menuLinkElement || !infoToggleButton || !appElement || !brandCardElement || !appEyebrow || !appTitle || !appCopy) {
     throw new Error("Skill Garden could not find the required DOM elements.");
   }
+
+  let isInfoPanelOpen = true;
+
+  const setInfoPanelState = (nextOpen: boolean): void => {
+    isInfoPanelOpen = nextOpen;
+    brandCardElement.hidden = !nextOpen;
+    infoToggleButton.setAttribute("aria-expanded", String(nextOpen));
+  };
+
+  infoToggleButton.addEventListener("click", () => {
+    setInfoPanelState(!isInfoPanelOpen);
+  });
 
   const renderMenuMode = (notice: string | null): void => {
     appElement.dataset.appMode = "menu";
@@ -56,7 +69,8 @@ async function bootstrap(): Promise<void> {
     navActionsElement.hidden = true;
     editLinkElement.hidden = true;
     menuLinkElement.hidden = true;
-    brandCardElement.hidden = false;
+    infoToggleButton.hidden = true;
+    setInfoPanelState(true);
     builderWorkspace.hidden = true;
 
     const menuPanel = createMenuPanel(menuPanelElement, {
@@ -136,6 +150,7 @@ async function bootstrap(): Promise<void> {
   statusElement.hidden = false;
   navActionsElement.hidden = true;
   brandCardElement.hidden = false;
+  infoToggleButton.hidden = true;
 
   let sceneToRender: { render: () => void };
 
@@ -153,7 +168,8 @@ async function bootstrap(): Promise<void> {
     menuLinkElement.hidden = false;
     menuLinkElement.href = buildAppHref({ mode: "menu" });
     menuLinkElement.textContent = "Back To Menu";
-    brandCardElement.hidden = false;
+    infoToggleButton.hidden = false;
+    setInfoPanelState(false);
     builderWorkspace.hidden = false;
     menuPanelElement.hidden = true;
     const builderController = await createSceneBuilder({
@@ -319,6 +335,8 @@ async function bootstrap(): Promise<void> {
     editLinkElement.hidden = false;
     menuLinkElement.hidden = false;
     brandCardElement.hidden = false;
+    infoToggleButton.hidden = true;
+    setInfoPanelState(true);
 
     editLinkElement.href = buildAppHref({ mode: "builder", worldId: savedWorld.id });
     menuLinkElement.href = buildAppHref({ mode: "menu" });

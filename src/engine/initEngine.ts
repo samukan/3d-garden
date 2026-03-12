@@ -41,7 +41,7 @@ function getRendererPreference(): RendererPreference {
     return fromEnv;
   }
 
-  return "webgl";
+  return "auto";
 }
 
 export async function initEngine(canvas: HTMLCanvasElement): Promise<RenderingContext> {

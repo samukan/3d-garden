@@ -7,6 +7,7 @@
       name="description"
       content="Skill Garden is a browser-saved 3D world builder with a main menu, editor, and read-only saved-world viewer."
     />
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' fill='%2321282f'/><path d='M30 70 L50 40 L70 70 M50 40 L50 25' stroke='%2367c23c' stroke-width='5' fill='none' stroke-linecap='round' stroke-linejoin='round'/><circle cx='50' cy='20' r='5' fill='%2367c23c'/></svg>" />
     <title>Skill Garden</title>
   </head>
   <body>
@@ -25,9 +26,10 @@
 
           <div class="controls-cluster">
             <div id="app-nav-actions" class="app-nav-actions" hidden>
-              <a id="app-edit-link" class="menu-secondary-button app-nav-link" href="#">Edit World</a>
-              <a id="app-menu-link" class="menu-secondary-button app-nav-link" href="#">Back To Menu</a>
+              <a id="app-edit-link" class="ui-button menu-secondary-button app-nav-link" href="#">Edit World</a>
+              <a id="app-menu-link" class="ui-button menu-secondary-button app-nav-link" href="#">Back To Menu</a>
             </div>
+            <button id="builder-info-toggle" class="ui-button menu-secondary-button builder-info-toggle" type="button" aria-label="Toggle builder info" aria-expanded="false" hidden>?</button>
             <div id="status-badge" class="status-badge" aria-live="polite"></div>
           </div>
         </header>
@@ -35,6 +37,8 @@
         <main id="menu-panel" class="menu-panel" hidden aria-live="polite"></main>
 
         <div id="builder-workspace" class="builder-workspace" hidden>
+          <div id="builder-top-bar" class="builder-top-bar" aria-label="Builder actions"></div>
+          <div id="builder-toast-host" class="builder-toast-host" aria-live="polite"></div>
           <aside id="builder-library-panel" class="builder-shell-panel builder-library-panel" aria-live="polite"></aside>
           <div id="builder-resize-handle" class="builder-resize-handle" aria-hidden="true"></div>
           <div class="builder-center-spacer" aria-hidden="true"></div>

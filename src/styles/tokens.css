@@ -1,0 +1,73 @@
+:root {
+  color-scheme: dark;
+
+  --font-family-sans: "Segoe UI Variable", "Segoe UI", "Noto Sans", "Helvetica Neue", sans-serif;
+  --font-size-12: 0.75rem;
+  --font-size-13: 0.8125rem;
+  --font-size-14: 0.875rem;
+  --font-size-16: 1rem;
+  --font-size-20: 1.25rem;
+  --font-size-28: 1.75rem;
+  --font-weight-regular: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --line-height-default: 1.45;
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-7: 32px;
+
+  --radius-tight: 6px;
+  --radius-control: 10px;
+  --radius-panel: 14px;
+  --radius-pill: 999px;
+
+  --color-canvas-top: #111723;
+  --color-canvas-mid: #0e1726;
+  --color-canvas-bottom: #0d141d;
+  --color-surface-1: rgba(17, 24, 36, 0.78);
+  --color-surface-2: rgba(20, 28, 40, 0.9);
+  --color-surface-3: rgba(30, 40, 56, 0.88);
+  --color-surface-overlay: rgba(13, 19, 30, 0.96);
+  --color-surface-sunken: rgba(8, 13, 22, 0.86);
+
+  --color-text-primary: #e7edf7;
+  --color-text-secondary: #bcc7db;
+  --color-text-muted: #8f9cb3;
+  --color-text-on-accent: #f7fbff;
+
+  --color-border-subtle: rgba(169, 186, 215, 0.18);
+  --color-border-strong: rgba(169, 186, 215, 0.34);
+
+  --color-accent: #4f80c5;
+  --color-accent-soft: rgba(79, 128, 197, 0.28);
+  --color-accent-strong: #7ca7e8;
+  --color-focus-ring: #9ac0ff;
+
+  --color-success: #56b07f;
+  --color-success-soft: rgba(86, 176, 127, 0.2);
+  --color-warning: #d3a657;
+  --color-warning-soft: rgba(211, 166, 87, 0.2);
+  --color-danger: #cb6871;
+  --color-danger-soft: rgba(203, 104, 113, 0.2);
+
+  --color-scrollbar-track: rgba(8, 13, 22, 0.85);
+  --color-scrollbar-thumb: rgba(123, 140, 168, 0.5);
+  --color-scrollbar-thumb-hover: rgba(145, 164, 196, 0.72);
+
+  --shadow-panel: 0 14px 34px rgba(4, 7, 12, 0.34);
+  --shadow-overlay: 0 18px 42px rgba(2, 5, 10, 0.42);
+  --shadow-none: none;
+  --blur-panel: 16px;
+
+  --transition-fast: 120ms ease;
+  --transition-base: 180ms ease;
+
+  --z-builder-workspace: 2;
+  --z-builder-controls: 8;
+  --z-overlay: 12;
+}

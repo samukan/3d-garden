@@ -17,7 +17,9 @@ import { createDevelopmentCamera } from "../engine/developmentCamera";
 import { createAssetDefinitionMap, getAssetLabel, loadAssetDefinitions } from "../generation/assetCatalog";
 import { loadNatureKitAssetLibrary } from "../generation/NatureKitAssetLoader";
 import type { AssetDefinition, AssetId } from "../generation/natureKitAssetManifest";
-import { deleteUploadedAsset, saveUploadedAsset } from "../storage/uploadedAssetStore";
+import { clearUploadedAssets, deleteUploadedAsset, saveUploadedAsset } from "../storage/uploadedAssetStore";
+import { isBrowserDebugEnabled, logBrowserDebug } from "../utils/browserDebug";
+import { enableMeshVertexColors } from "../utils/meshColors";
 import { getBuilderPalette } from "./builderPalette";
 import { parseBuilderLayoutDocument, serializeBuilderLayout } from "./sceneLayoutSerializer";
 import { createBuilderSceneState } from "./sceneBuilderState";
@@ -46,6 +48,7 @@ export interface SceneBuilderController {
   placeAsset: (assetId: AssetId) => Promise<void>;
   selectObjectById: (objectId: string | null) => void;
   subscribe: (listener: () => void) => () => void;
+  clearUploads: () => Promise<{ success: boolean; removedCount: number; error?: string }>;
   uploadAsset: (file: File) => Promise<{ success: boolean; assetId?: AssetId; error?: string }>;
   updateSelectedTransform: (patch: {
     position?: Partial<BuilderVector3>;
@@ -76,6 +79,7 @@ export async function createSceneBuilder({
 }: CreateSceneBuilderOptions): Promise<SceneBuilderController> {
   const scene = new Scene(engine);
   const developmentCamera = createDevelopmentCamera(scene, canvas);
+  scene.activeCamera = developmentCamera.camera;
   const state = createBuilderSceneState();
   const selectionController = createSelectionController(scene);
   const listeners = new Set<() => void>();
@@ -137,6 +141,37 @@ export async function createSceneBuilder({
   crossStrip.material = guideMaterial;
 
   const assetLibrary = await loadNatureKitAssetLibrary(scene, Array.from(assetDefinitions.values()));
+
+  const logSceneSnapshot = (label: string): void => {
+    logBrowserDebug("builder:scene", {
+      label,
+      meshCount: scene.meshes.length,
+      rootNodes: scene.rootNodes.length,
+      activeCamera: scene.activeCamera?.name ?? "none",
+      camera: {
+        alpha: Number(developmentCamera.camera.alpha.toFixed(3)),
+        beta: Number(developmentCamera.camera.beta.toFixed(3)),
+        radius: Number(developmentCamera.camera.radius.toFixed(3)),
+        target: {
+          x: Number(developmentCamera.camera.target.x.toFixed(3)),
+          y: Number(developmentCamera.camera.target.y.toFixed(3)),
+          z: Number(developmentCamera.camera.target.z.toFixed(3))
+        }
+      }
+    });
+  };
+
+  if (isBrowserDebugEnabled()) {
+    const debugMarker = MeshBuilder.CreateBox("builder-debug-origin", { size: 0.8 }, scene);
+    debugMarker.position = new Vector3(0, 0.4, 0);
+    const debugMaterial = new StandardMaterial("builder-debug-origin-material", scene);
+    debugMaterial.emissiveColor = new Color3(0.95, 0.2, 0.2);
+    debugMaterial.diffuseColor = new Color3(0.95, 0.2, 0.2);
+    debugMaterial.specularColor = Color3.Black();
+    debugMarker.material = debugMaterial;
+  }
+
+  logSceneSnapshot("init");
 
   const notify = (): void => {
     for (const listener of listeners) {
@@ -264,6 +299,29 @@ export async function createSceneBuilder({
     }
 
     const meshes = root.getChildMeshes(false).filter((mesh): mesh is Mesh => mesh instanceof Mesh);
+
+    for (const mesh of meshes) {
+      enableMeshVertexColors(mesh, { log: true });
+    }
+
+    logBrowserDebug("builder:placed-asset", {
+      assetId: record.assetId,
+      meshCount: meshes.length,
+      root: {
+        name: root.name,
+        enabled: root.isEnabled(),
+        position: {
+          x: Number(root.position.x.toFixed(3)),
+          y: Number(root.position.y.toFixed(3)),
+          z: Number(root.position.z.toFixed(3))
+        },
+        scaling: {
+          x: Number(root.scaling.x.toFixed(3)),
+          y: Number(root.scaling.y.toFixed(3)),
+          z: Number(root.scaling.z.toFixed(3))
+        }
+      }
+    });
     const entry: PlacedObjectEntry = {
       layout: record,
       meshes,
@@ -293,6 +351,34 @@ export async function createSceneBuilder({
     state.layoutRecords = [];
     selectionController.setSelection([]);
     state.selectedObjectId = null;
+  };
+
+  const clearUploads = async (): Promise<{ success: boolean; removedCount: number; error?: string }> => {
+    state.statusMessage = "Clearing uploads...";
+    notify();
+
+    try {
+      const removedIds = await clearUploadedAssets();
+      clearAllObjects();
+      nextObjectNumber = 1;
+
+      if (removedIds.length > 0) {
+        await assetLibrary.evictAssets(removedIds);
+      }
+
+      await refreshAssetCatalog({ notify: false });
+      state.statusMessage =
+        removedIds.length > 0
+          ? `Cleared ${removedIds.length} uploaded asset${removedIds.length === 1 ? "" : "s"}.`
+          : "No uploaded assets to clear.";
+      notify();
+      return { success: true, removedCount: removedIds.length };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Uploaded assets could not be cleared.";
+      state.statusMessage = message;
+      notify();
+      return { success: false, removedCount: 0, error: message };
+    }
   };
 
   const createObjectId = (): string => {
@@ -341,6 +427,7 @@ export async function createSceneBuilder({
       scale?: number;
     },
     options?: {
+      clearUploads,
       statusMessage?: string;
       silentStatus?: boolean;
     }
@@ -704,6 +791,7 @@ export async function createSceneBuilder({
 
   state.isReady = true;
   state.statusMessage = "Builder ready. Choose an asset and place it into the scene.";
+  logSceneSnapshot("ready");
 
   return {
     scene,
@@ -721,6 +809,7 @@ export async function createSceneBuilder({
         listeners.delete(listener);
       };
     },
+    clearUploads,
     uploadAsset,
     updateSelectedTransform
   };
