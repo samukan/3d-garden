@@ -1,6 +1,5 @@
 import { z } from "zod";
 
-import { natureKitAssetKeys } from "../generation/natureKitAssetManifest";
 import type { BuilderLayoutDocument, BuilderLayoutRecord } from "./builderTypes";
 
 const builderVector3Schema = z.object({
@@ -11,7 +10,7 @@ const builderVector3Schema = z.object({
 
 const builderLayoutRecordSchema = z.object({
   id: z.string().min(1),
-  assetId: z.enum(natureKitAssetKeys),
+  assetId: z.string().min(1),
   position: builderVector3Schema,
   rotationY: z.number().finite(),
   scale: z.number().positive()

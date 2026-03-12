@@ -14,13 +14,16 @@ import type { TransformNode } from "@babylonjs/core/Meshes/transformNode";
 import { Scene } from "@babylonjs/core/scene";
 
 import { createDevelopmentCamera } from "../engine/developmentCamera";
+import { createAssetDefinitionMap, getAssetLabel, loadAssetDefinitions } from "../generation/assetCatalog";
 import { loadNatureKitAssetLibrary } from "../generation/NatureKitAssetLoader";
-import { natureKitAssetManifest, type NatureKitAssetKey } from "../generation/natureKitAssetManifest";
+import type { AssetDefinition, AssetId } from "../generation/natureKitAssetManifest";
+import { deleteUploadedAsset, saveUploadedAsset } from "../storage/uploadedAssetStore";
 import { getBuilderPalette } from "./builderPalette";
 import { parseBuilderLayoutDocument, serializeBuilderLayout } from "./sceneLayoutSerializer";
 import { createBuilderSceneState } from "./sceneBuilderState";
 import type {
   BuilderLayoutRecord,
+  BuilderPaletteGroup,
   BuilderSceneSnapshot,
   BuilderSelectedObjectSnapshot,
   BuilderVector3
@@ -36,13 +39,14 @@ export interface SceneBuilderController {
   scene: Scene;
   deleteSelectedObject: () => void;
   deleteObjectById: (objectId: string) => void;
-  duplicateSelectedObject: () => void;
+  duplicateSelectedObject: () => Promise<void>;
   exportLayout: () => string;
   getSnapshot: () => BuilderSceneSnapshot;
-  importLayout: (input: string) => { success: boolean; error?: string };
-  placeAsset: (assetId: NatureKitAssetKey) => void;
+  importLayout: (input: string) => Promise<{ success: boolean; error?: string }>;
+  placeAsset: (assetId: AssetId) => Promise<void>;
   selectObjectById: (objectId: string | null) => void;
   subscribe: (listener: () => void) => () => void;
+  uploadAsset: (file: File) => Promise<{ success: boolean; assetId?: AssetId; error?: string }>;
   updateSelectedTransform: (patch: {
     position?: Partial<BuilderVector3>;
     rotationY?: number;
@@ -73,11 +77,12 @@ export async function createSceneBuilder({
   const scene = new Scene(engine);
   const developmentCamera = createDevelopmentCamera(scene, canvas);
   const state = createBuilderSceneState();
-  const palette = getBuilderPalette();
   const selectionController = createSelectionController(scene);
   const listeners = new Set<() => void>();
   const placedObjects = new Map<string, PlacedObjectEntry>();
   const nodeObjectMap = new Map<number, string>();
+  let assetDefinitions = createAssetDefinitionMap(await loadAssetDefinitions());
+  let palette: BuilderPaletteGroup[] = getBuilderPalette(Array.from(assetDefinitions.values()));
   let dragState: BuilderDragState | null = null;
   let suppressNextPick = false;
   let nextObjectNumber = 1;
@@ -131,11 +136,21 @@ export async function createSceneBuilder({
   crossStrip.position = new Vector3(0, 0.021, 0);
   crossStrip.material = guideMaterial;
 
-  const assetLibrary = await loadNatureKitAssetLibrary(scene);
+  const assetLibrary = await loadNatureKitAssetLibrary(scene, Array.from(assetDefinitions.values()));
 
   const notify = (): void => {
     for (const listener of listeners) {
       listener();
+    }
+  };
+
+  const refreshAssetCatalog = async (options?: { notify?: boolean }): Promise<void> => {
+    assetDefinitions = createAssetDefinitionMap(await loadAssetDefinitions());
+    palette = getBuilderPalette(Array.from(assetDefinitions.values()));
+    assetLibrary.setDefinitions(Array.from(assetDefinitions.values()));
+
+    if (options?.notify !== false) {
+      notify();
     }
   };
 
@@ -159,21 +174,28 @@ export async function createSceneBuilder({
 
     return {
       ...cloneLayoutRecord(entry.layout),
-      assetLabel: natureKitAssetManifest[entry.layout.assetId].label
+      assetLabel: getAssetLabel(assetDefinitions, entry.layout.assetId)
     };
   };
 
   const getSnapshot = (): BuilderSceneSnapshot => ({
     isReady: state.isReady,
     palette,
-    objects: state.layoutRecords.map(cloneLayoutRecord),
+    objects: state.layoutRecords.map((record) => ({
+      ...cloneLayoutRecord(record),
+      assetLabel: getAssetLabel(assetDefinitions, record.assetId)
+    })),
     selectedObjectId: state.selectedObjectId,
     selectedObject: getSelectedObjectSnapshot(),
     statusMessage: state.statusMessage
   });
 
   const applyLayoutToEntry = (entry: PlacedObjectEntry): void => {
-    const definition = natureKitAssetManifest[entry.layout.assetId];
+    const definition = assetDefinitions.get(entry.layout.assetId);
+    if (!definition) {
+      return;
+    }
+
     entry.root.position.set(entry.layout.position.x, entry.layout.position.y, entry.layout.position.z);
     entry.root.rotation.set(0, definition.rotationY + entry.layout.rotationY, 0);
 
@@ -219,8 +241,28 @@ export async function createSceneBuilder({
     setSelection(objectId);
   };
 
-  const instantiateRecord = (record: BuilderLayoutRecord): void => {
-    const root = assetLibrary.instantiateAsset(record.assetId, record.id, new Vector3(record.position.x, record.position.y, record.position.z));
+  const instantiateRecord = async (record: BuilderLayoutRecord): Promise<boolean> => {
+    const definition = assetDefinitions.get(record.assetId);
+    if (!definition) {
+      state.statusMessage = `Asset is not available locally: ${record.assetId}.`;
+      notify();
+      return false;
+    }
+
+    let root: TransformNode;
+
+    try {
+      root = await assetLibrary.instantiateAsset(
+        record.assetId,
+        record.id,
+        new Vector3(record.position.x, record.position.y, record.position.z)
+      );
+    } catch (error) {
+      state.statusMessage = error instanceof Error ? error.message : `Could not load ${definition.label}.`;
+      notify();
+      return false;
+    }
+
     const meshes = root.getChildMeshes(false).filter((mesh): mesh is Mesh => mesh instanceof Mesh);
     const entry: PlacedObjectEntry = {
       layout: record,
@@ -232,6 +274,7 @@ export async function createSceneBuilder({
     placedObjects.set(record.id, entry);
     state.layoutRecords.push(record);
     registerNodeMap(entry);
+    return true;
   };
 
   const disposeEntry = (entry: PlacedObjectEntry): void => {
@@ -332,7 +375,7 @@ export async function createSceneBuilder({
     applyLayoutToEntry(entry);
 
     if (!options?.silentStatus) {
-      state.statusMessage = options?.statusMessage ?? `Updated ${natureKitAssetManifest[entry.layout.assetId].label}.`;
+      state.statusMessage = options?.statusMessage ?? `Updated ${getAssetLabel(assetDefinitions, entry.layout.assetId)}.`;
     }
 
     notify();
@@ -348,9 +391,16 @@ export async function createSceneBuilder({
     return groundPick.pickedPoint.clone();
   };
 
-  const placeAsset = (assetId: NatureKitAssetKey): void => {
+  const placeAsset = async (assetId: AssetId): Promise<void> => {
     if (!state.isReady) {
       state.statusMessage = "Builder assets are still loading.";
+      notify();
+      return;
+    }
+
+    const definition = assetDefinitions.get(assetId);
+    if (!definition) {
+      state.statusMessage = `Asset is not available locally: ${assetId}.`;
       notify();
       return;
     }
@@ -363,8 +413,15 @@ export async function createSceneBuilder({
       scale: 1
     };
 
-    instantiateRecord(record);
-    state.statusMessage = `Placed ${natureKitAssetManifest[assetId].label}.`;
+    state.statusMessage = `Loading ${definition.label}...`;
+    notify();
+
+    const didInstantiate = await instantiateRecord(record);
+    if (!didInstantiate) {
+      return;
+    }
+
+    state.statusMessage = `Placed ${definition.label}.`;
     setSelection(record.id);
   };
 
@@ -386,7 +443,7 @@ export async function createSceneBuilder({
       return;
     }
 
-    const label = natureKitAssetManifest[entry.layout.assetId].label;
+    const label = getAssetLabel(assetDefinitions, entry.layout.assetId);
     const wasSelected = state.selectedObjectId === objectId;
 
     if (dragState?.objectId === objectId) {
@@ -413,7 +470,7 @@ export async function createSceneBuilder({
     deleteObjectById(state.selectedObjectId);
   };
 
-  const duplicateSelectedObject = (): void => {
+  const duplicateSelectedObject = async (): Promise<void> => {
     if (!state.selectedObjectId) {
       return;
     }
@@ -433,14 +490,18 @@ export async function createSceneBuilder({
       }
     };
 
-    instantiateRecord(duplicateRecord);
-    state.statusMessage = `Duplicated ${natureKitAssetManifest[duplicateRecord.assetId].label}.`;
+    const didInstantiate = await instantiateRecord(duplicateRecord);
+    if (!didInstantiate) {
+      return;
+    }
+
+    state.statusMessage = `Duplicated ${getAssetLabel(assetDefinitions, duplicateRecord.assetId)}.`;
     setSelection(duplicateRecord.id);
   };
 
   const exportLayout = (): string => serializeBuilderLayout(state.layoutRecords.map(cloneLayoutRecord));
 
-  const importLayout = (input: string): { success: boolean; error?: string } => {
+  const importLayout = async (input: string): Promise<{ success: boolean; error?: string }> => {
     const result = parseBuilderLayoutDocument(input);
 
     if (!result.success) {
@@ -454,8 +515,18 @@ export async function createSceneBuilder({
 
     clearAllObjects();
 
+    let importedCount = 0;
+    let skippedCount = 0;
+    let firstImportedObjectId: string | null = null;
+
     for (const record of result.value.objects.map(cloneLayoutRecord)) {
-      instantiateRecord(record);
+      const didInstantiate = await instantiateRecord(record);
+      if (didInstantiate) {
+        importedCount += 1;
+        firstImportedObjectId ??= record.id;
+      } else {
+        skippedCount += 1;
+      }
 
       const suffix = Number(record.id.split("-").at(-1));
       if (Number.isFinite(suffix)) {
@@ -463,11 +534,46 @@ export async function createSceneBuilder({
       }
     }
 
-    state.statusMessage = `Imported ${result.value.objects.length} object${result.value.objects.length === 1 ? "" : "s"}.`;
-    setSelection(result.value.objects[0]?.id ?? null);
+    state.statusMessage = skippedCount
+      ? `Imported ${importedCount} object${importedCount === 1 ? "" : "s"}. Skipped ${skippedCount} unavailable asset${skippedCount === 1 ? "" : "s"}.`
+      : `Imported ${importedCount} object${importedCount === 1 ? "" : "s"}.`;
+    setSelection(firstImportedObjectId);
 
     return {
       success: true
+    };
+  };
+
+  const uploadAsset = async (file: File): Promise<{ success: boolean; assetId?: AssetId; error?: string }> => {
+    state.statusMessage = `Uploading ${file.name}...`;
+    notify();
+
+    let definition: AssetDefinition | null = null;
+
+    try {
+      definition = await saveUploadedAsset(file);
+      await refreshAssetCatalog({ notify: false });
+      await assetLibrary.preloadAsset(definition.id);
+    } catch (error) {
+      if (definition) {
+        await deleteUploadedAsset(definition.id);
+        await refreshAssetCatalog({ notify: false });
+      }
+
+      const message = error instanceof Error ? error.message : "Asset upload failed.";
+      state.statusMessage = message;
+      notify();
+      return {
+        success: false,
+        error: message
+      };
+    }
+
+    state.statusMessage = `Uploaded ${definition.label}.`;
+    notify();
+    return {
+      success: true,
+      assetId: definition.id
     };
   };
 
@@ -552,7 +658,7 @@ export async function createSceneBuilder({
 
       const movedEntry = placedObjects.get(completedDrag.objectId);
       if (movedEntry) {
-        state.statusMessage = `Moved ${natureKitAssetManifest[movedEntry.layout.assetId].label}.`;
+        state.statusMessage = `Moved ${getAssetLabel(assetDefinitions, movedEntry.layout.assetId)}.`;
         notify();
       }
 
@@ -615,6 +721,7 @@ export async function createSceneBuilder({
         listeners.delete(listener);
       };
     },
+    uploadAsset,
     updateSelectedTransform
   };
 }

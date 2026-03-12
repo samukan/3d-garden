@@ -1,46 +1,69 @@
-import { natureKitAssetManifest } from "../generation/natureKitAssetManifest";
+import type { AssetDefinition } from "../generation/natureKitAssetManifest";
 import type { BuilderPaletteGroup } from "./builderTypes";
 
-const paletteDefinition = [
-  {
-    id: "ground",
-    label: "Ground",
-    assetIds: ["groundTile", "cliffBlock", "cliffCorner", "cliffSteps"] as const
-  },
-  {
-    id: "paths",
-    label: "Paths",
-    assetIds: ["pathStraight", "pathTile", "pathEnd"] as const
-  },
-  {
-    id: "trees",
-    label: "Trees",
-    assetIds: ["tree"] as const
-  },
-  {
-    id: "plants",
-    label: "Plants",
-    assetIds: ["bush"] as const
-  },
-  {
-    id: "rocks",
-    label: "Rocks",
-    assetIds: ["rock"] as const
-  },
-  {
-    id: "props",
-    label: "Props",
-    assetIds: ["focalProp"] as const
-  }
-] as const;
+const groupOrder = ["ground", "paths", "trees", "plants", "rocks", "props", "uploads"];
+const assetOrder = [
+  "groundTile",
+  "cliffBlock",
+  "cliffCorner",
+  "cliffSteps",
+  "pathStraight",
+  "pathTile",
+  "pathEnd",
+  "tree",
+  "bush",
+  "rock",
+  "focalProp"
+];
 
-export function getBuilderPalette(): BuilderPaletteGroup[] {
-  return paletteDefinition.map((group) => ({
-    id: group.id,
-    label: group.label,
-    items: group.assetIds.map((assetId) => ({
-      assetId,
-      label: natureKitAssetManifest[assetId].label
-    }))
-  }));
+const assetOrderIndex = new Map(assetOrder.map((assetId, index) => [assetId, index]));
+const groupOrderIndex = new Map(groupOrder.map((groupId, index) => [groupId, index]));
+
+export function getBuilderPalette(assetDefinitions: AssetDefinition[]): BuilderPaletteGroup[] {
+  const grouped = new Map<string, BuilderPaletteGroup>();
+
+  for (const definition of assetDefinitions) {
+    const existingGroup = grouped.get(definition.groupId);
+    if (existingGroup) {
+      existingGroup.items.push({
+        assetId: definition.id,
+        label: definition.label
+      });
+      continue;
+    }
+
+    grouped.set(definition.groupId, {
+      id: definition.groupId,
+      label: definition.groupLabel,
+      items: [
+        {
+          assetId: definition.id,
+          label: definition.label
+        }
+      ]
+    });
+  }
+
+  return Array.from(grouped.values())
+    .sort((left, right) => {
+      const leftIndex = groupOrderIndex.get(left.id) ?? Number.MAX_SAFE_INTEGER;
+      const rightIndex = groupOrderIndex.get(right.id) ?? Number.MAX_SAFE_INTEGER;
+      if (leftIndex !== rightIndex) {
+        return leftIndex - rightIndex;
+      }
+
+      return left.label.localeCompare(right.label);
+    })
+    .map((group) => ({
+      ...group,
+      items: group.items.slice().sort((left, right) => {
+        const leftIndex = assetOrderIndex.get(left.assetId) ?? Number.MAX_SAFE_INTEGER;
+        const rightIndex = assetOrderIndex.get(right.assetId) ?? Number.MAX_SAFE_INTEGER;
+        if (leftIndex !== rightIndex) {
+          return leftIndex - rightIndex;
+        }
+
+        return left.label.localeCompare(right.label);
+      })
+    }));
 }

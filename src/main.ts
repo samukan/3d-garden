@@ -169,7 +169,7 @@ async function bootstrap(): Promise<void> {
       : "New world. Save it when you are ready to reopen it later.";
 
     if (savedWorld) {
-      builderController.importLayout(savedWorld.layout);
+      await builderController.importLayout(savedWorld.layout);
     }
 
     const hasUnsavedChanges = (): boolean => builderController.exportLayout() !== lastSavedLayout;

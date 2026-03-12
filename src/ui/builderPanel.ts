@@ -1,7 +1,6 @@
 import type { SceneBuilderController } from "../builder/sceneBuilder";
 import type { BuilderSceneSnapshot } from "../builder/builderTypes";
-import { natureKitAssetManifest } from "../generation/natureKitAssetManifest";
-import type { NatureKitAssetKey } from "../generation/natureKitAssetManifest";
+import type { AssetId } from "../generation/natureKitAssetManifest";
 
 export interface BuilderPanelController {
   dispose: () => void;
@@ -39,6 +38,12 @@ const libraryPanelMarkup = `
       <span class="builder-panel-label">Selected Asset</span>
       <div id="builder-asset-selection" class="builder-selection-card"></div>
       <button id="builder-place-asset" class="builder-button builder-button-primary builder-button-block" type="button">Add to scene</button>
+    </div>
+    <div class="builder-panel-section builder-panel-section-tight">
+      <span class="builder-panel-label">Local Upload</span>
+      <p class="builder-control-note">Import a .glb file into this browser only.</p>
+      <input id="builder-upload-asset-input" type="file" accept=".glb,model/gltf-binary" hidden />
+      <button id="builder-upload-asset" class="builder-button builder-button-block" type="button">Upload GLB</button>
     </div>
     <div class="builder-panel-section builder-panel-section-fill">
       <span class="builder-panel-label">Library</span>
@@ -172,6 +177,8 @@ export function createBuilderPanel(
   const assetsTabPanel = libraryPanel.querySelector<HTMLElement>("#builder-assets-panel");
   const sceneTabPanel = libraryPanel.querySelector<HTMLElement>("#builder-scene-panel");
   const placeAssetButton = libraryPanel.querySelector<HTMLButtonElement>("#builder-place-asset");
+  const uploadAssetInput = libraryPanel.querySelector<HTMLInputElement>("#builder-upload-asset-input");
+  const uploadAssetButton = libraryPanel.querySelector<HTMLButtonElement>("#builder-upload-asset");
   const paletteElement = libraryPanel.querySelector<HTMLElement>("#builder-palette");
   const sceneObjectsElement = libraryPanel.querySelector<HTMLElement>("#builder-scene-objects");
   const selectionSummaryElement = inspectorPanel.querySelector<HTMLElement>("#builder-selection-summary");
@@ -202,6 +209,8 @@ export function createBuilderPanel(
     !assetsTabPanel ||
     !sceneTabPanel ||
     !placeAssetButton ||
+    !uploadAssetInput ||
+    !uploadAssetButton ||
     !paletteElement ||
     !sceneObjectsElement ||
     !selectionSummaryElement ||
@@ -228,7 +237,7 @@ export function createBuilderPanel(
     throw new Error("Builder panel could not find the required DOM elements.");
   }
 
-  let selectedAssetId: NatureKitAssetKey | null = null;
+  let selectedAssetId: AssetId | null = null;
   let resizeCleanup: (() => void) | null = null;
   let activeLibraryTab: BuilderLibraryTab = "assets";
   let worldState = { ...options.worldState };
@@ -340,7 +349,7 @@ export function createBuilderPanel(
 
     sceneObjectsElement.innerHTML = snapshot.objects
       .map((object) => {
-        const assetLabel = natureKitAssetManifest[object.assetId].label;
+        const assetLabel = object.assetLabel;
         const isSelected = object.id === snapshot.selectedObjectId;
 
         return `
@@ -465,7 +474,7 @@ export function createBuilderPanel(
       return;
     }
 
-    const assetId = button.dataset.assetId as NatureKitAssetKey | undefined;
+    const assetId = button.dataset.assetId;
     if (!assetId) {
       return;
     }
@@ -512,7 +521,28 @@ export function createBuilderPanel(
       return;
     }
 
-    sceneBuilder.placeAsset(selectedAssetId);
+    void sceneBuilder.placeAsset(selectedAssetId);
+  });
+
+  uploadAssetButton.addEventListener("click", () => {
+    uploadAssetInput.click();
+  });
+
+  uploadAssetInput.addEventListener("change", () => {
+    const file = uploadAssetInput.files?.[0];
+    if (!file) {
+      return;
+    }
+
+    void sceneBuilder.uploadAsset(file).then((result) => {
+      uploadAssetInput.value = "";
+      if (!result.success || !result.assetId) {
+        return;
+      }
+
+      selectedAssetId = result.assetId;
+      renderPalette(sceneBuilder.getSnapshot());
+    });
   });
 
   posXInput.addEventListener("change", () => {
@@ -577,7 +607,7 @@ export function createBuilderPanel(
   });
 
   duplicateButton.addEventListener("click", () => {
-    sceneBuilder.duplicateSelectedObject();
+    void sceneBuilder.duplicateSelectedObject();
   });
 
   deleteButton.addEventListener("click", () => {
@@ -589,7 +619,7 @@ export function createBuilderPanel(
   });
 
   importButton.addEventListener("click", () => {
-    sceneBuilder.importLayout(layoutTextarea.value);
+    void sceneBuilder.importLayout(layoutTextarea.value);
   });
 
   saveWorldButton.addEventListener("click", () => {

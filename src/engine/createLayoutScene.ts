@@ -10,8 +10,8 @@ import { Scene } from "@babylonjs/core/scene";
 
 import type { BuilderLayoutRecord } from "../builder/builderTypes";
 import { createDevelopmentCamera } from "./developmentCamera";
+import { createAssetDefinitionMap, loadAssetDefinitions } from "../generation/assetCatalog";
 import { loadNatureKitAssetLibrary } from "../generation/NatureKitAssetLoader";
-import { natureKitAssetManifest } from "../generation/natureKitAssetManifest";
 
 interface CreateLayoutSceneOptions {
   canvas: HTMLCanvasElement;
@@ -59,11 +59,17 @@ export async function createLayoutScene({
   ground.material = groundMaterial;
   ground.receiveShadows = true;
 
-  const assetLibrary = await loadNatureKitAssetLibrary(scene);
+  const assetDefinitions = createAssetDefinitionMap(await loadAssetDefinitions());
+  const assetLibrary = await loadNatureKitAssetLibrary(scene, Array.from(assetDefinitions.values()));
 
   for (const record of layoutRecords) {
-    const definition = natureKitAssetManifest[record.assetId];
-    const root = assetLibrary.instantiateAsset(
+    const definition = assetDefinitions.get(record.assetId);
+    if (!definition) {
+      console.warn(`Viewer skipped unavailable asset: ${record.assetId}`);
+      continue;
+    }
+
+    const root = await assetLibrary.instantiateAsset(
       record.assetId,
       `viewer-${record.id}`,
       new Vector3(record.position.x, record.position.y, record.position.z)

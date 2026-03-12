@@ -1,3 +1,22 @@
+export type AssetId = string;
+
+export interface AssetDefinition {
+  id: AssetId;
+  label: string;
+  scale: number;
+  rotationY: number;
+  groupId: string;
+  groupLabel: string;
+  source:
+    | {
+        type: "url";
+        url: string;
+      }
+    | {
+        type: "uploaded";
+      };
+}
+
 export const natureKitAssetKeys = [
   "groundTile",
   "pathStraight",
@@ -12,94 +31,146 @@ export const natureKitAssetKeys = [
   "focalProp"
 ] as const;
 
-export type NatureKitAssetKey = (typeof natureKitAssetKeys)[number];
+export type BuiltInNatureKitAssetKey = (typeof natureKitAssetKeys)[number];
+export type NatureKitAssetKey = AssetId;
 
-export interface NatureKitAssetDefinition {
-  key: NatureKitAssetKey;
-  label: string;
-  url: string;
-  scale: number;
-  rotationY: number;
-}
-
-export const natureKitAssetManifest: Record<NatureKitAssetKey, NatureKitAssetDefinition> = {
+export const natureKitAssetManifest: Record<BuiltInNatureKitAssetKey, AssetDefinition> = {
   groundTile: {
-    key: "groundTile",
+    id: "groundTile",
     label: "Ground Grass",
-    url: "/assets/nature-kit/Models/GLTF format/ground_grass.glb",
     scale: 2,
-    rotationY: 0
+    rotationY: 0,
+    groupId: "ground",
+    groupLabel: "Ground",
+    source: {
+      type: "url",
+      url: "/assets/nature-kit/Models/GLTF format/ground_grass.glb"
+    }
   },
   pathStraight: {
-    key: "pathStraight",
+    id: "pathStraight",
     label: "Path Straight",
-    url: "/assets/nature-kit/Models/GLTF format/ground_pathStraight.glb",
     scale: 2,
-    rotationY: 0
+    rotationY: 0,
+    groupId: "paths",
+    groupLabel: "Paths",
+    source: {
+      type: "url",
+      url: "/assets/nature-kit/Models/GLTF format/ground_pathStraight.glb"
+    }
   },
   pathTile: {
-    key: "pathTile",
+    id: "pathTile",
     label: "Path Tile",
-    url: "/assets/nature-kit/Models/GLTF format/ground_pathTile.glb",
     scale: 2,
-    rotationY: 0
+    rotationY: 0,
+    groupId: "paths",
+    groupLabel: "Paths",
+    source: {
+      type: "url",
+      url: "/assets/nature-kit/Models/GLTF format/ground_pathTile.glb"
+    }
   },
   pathEnd: {
-    key: "pathEnd",
+    id: "pathEnd",
     label: "Path End",
-    url: "/assets/nature-kit/Models/GLTF format/ground_pathEnd.glb",
     scale: 2,
-    rotationY: 0
+    rotationY: 0,
+    groupId: "paths",
+    groupLabel: "Paths",
+    source: {
+      type: "url",
+      url: "/assets/nature-kit/Models/GLTF format/ground_pathEnd.glb"
+    }
   },
   cliffBlock: {
-    key: "cliffBlock",
+    id: "cliffBlock",
     label: "Cliff Block Stone",
-    url: "/assets/nature-kit/Models/GLTF format/cliff_block_stone.glb",
     scale: 1.55,
-    rotationY: 0
+    rotationY: 0,
+    groupId: "ground",
+    groupLabel: "Ground",
+    source: {
+      type: "url",
+      url: "/assets/nature-kit/Models/GLTF format/cliff_block_stone.glb"
+    }
   },
   cliffCorner: {
-    key: "cliffCorner",
+    id: "cliffCorner",
     label: "Cliff Corner Stone",
-    url: "/assets/nature-kit/Models/GLTF format/cliff_corner_stone.glb",
     scale: 1.55,
-    rotationY: 0
+    rotationY: 0,
+    groupId: "ground",
+    groupLabel: "Ground",
+    source: {
+      type: "url",
+      url: "/assets/nature-kit/Models/GLTF format/cliff_corner_stone.glb"
+    }
   },
   cliffSteps: {
-    key: "cliffSteps",
+    id: "cliffSteps",
     label: "Cliff Steps Stone",
-    url: "/assets/nature-kit/Models/GLTF format/cliff_steps_stone.glb",
     scale: 1.55,
-    rotationY: 0
+    rotationY: 0,
+    groupId: "ground",
+    groupLabel: "Ground",
+    source: {
+      type: "url",
+      url: "/assets/nature-kit/Models/GLTF format/cliff_steps_stone.glb"
+    }
   },
   tree: {
-    key: "tree",
+    id: "tree",
     label: "Tree Oak",
-    url: "/assets/nature-kit/Models/GLTF format/tree_oak.glb",
     scale: 1.8,
-    rotationY: 0
+    rotationY: 0,
+    groupId: "trees",
+    groupLabel: "Trees",
+    source: {
+      type: "url",
+      url: "/assets/nature-kit/Models/GLTF format/tree_oak.glb"
+    }
   },
   bush: {
-    key: "bush",
+    id: "bush",
     label: "Bush Detailed",
-    url: "/assets/nature-kit/Models/GLTF format/plant_bushDetailed.glb",
     scale: 1.4,
-    rotationY: 0
+    rotationY: 0,
+    groupId: "plants",
+    groupLabel: "Plants",
+    source: {
+      type: "url",
+      url: "/assets/nature-kit/Models/GLTF format/plant_bushDetailed.glb"
+    }
   },
   rock: {
-    key: "rock",
+    id: "rock",
     label: "Rock Small A",
-    url: "/assets/nature-kit/Models/GLTF format/rock_smallA.glb",
     scale: 1.35,
-    rotationY: 0
+    rotationY: 0,
+    groupId: "rocks",
+    groupLabel: "Rocks",
+    source: {
+      type: "url",
+      url: "/assets/nature-kit/Models/GLTF format/rock_smallA.glb"
+    }
   },
   focalProp: {
-    key: "focalProp",
+    id: "focalProp",
     label: "Sign",
-    url: "/assets/nature-kit/Models/GLTF format/sign.glb",
     scale: 1.6,
-    rotationY: 0
+    rotationY: 0,
+    groupId: "props",
+    groupLabel: "Props",
+    source: {
+      type: "url",
+      url: "/assets/nature-kit/Models/GLTF format/sign.glb"
+    }
   }
 };
 
-export const natureKitPreviewOrder: NatureKitAssetKey[] = ["tree", "bush", "rock", "focalProp"];
+export function getBuiltInAssetDefinitions(): AssetDefinition[] {
+  return Object.values(natureKitAssetManifest);
+}
+
+export const natureKitPreviewOrder: BuiltInNatureKitAssetKey[] = ["tree", "bush", "rock", "focalProp"];

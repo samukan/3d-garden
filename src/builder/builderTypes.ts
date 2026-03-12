@@ -1,4 +1,4 @@
-import type { NatureKitAssetKey } from "../generation/natureKitAssetManifest";
+import type { AssetId } from "../generation/natureKitAssetManifest";
 
 export interface BuilderVector3 {
   x: number;
@@ -8,14 +8,14 @@ export interface BuilderVector3 {
 
 export interface BuilderLayoutRecord {
   id: string;
-  assetId: NatureKitAssetKey;
+  assetId: AssetId;
   position: BuilderVector3;
   rotationY: number;
   scale: number;
 }
 
 export interface BuilderPaletteItem {
-  assetId: NatureKitAssetKey;
+  assetId: AssetId;
   label: string;
 }
 
@@ -29,10 +29,14 @@ export interface BuilderSelectedObjectSnapshot extends BuilderLayoutRecord {
   assetLabel: string;
 }
 
+export interface BuilderPlacedObjectSnapshot extends BuilderLayoutRecord {
+  assetLabel: string;
+}
+
 export interface BuilderSceneSnapshot {
   isReady: boolean;
   palette: BuilderPaletteGroup[];
-  objects: BuilderLayoutRecord[];
+  objects: BuilderPlacedObjectSnapshot[];
   selectedObjectId: string | null;
   selectedObject: BuilderSelectedObjectSnapshot | null;
   statusMessage: string;
