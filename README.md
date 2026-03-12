@@ -37,7 +37,7 @@ npm run preview
 - `scope` controls trunk thickness.
 - `tech.length` increases branch count and foliage density.
 - `biomeID` chooses the palette and zone placement.
-- `year` influences placement along the garden timeline.
+- `order` controls placement through the garden progression without showing dates in the UI.
 
 ## Renderer Strategy
 
@@ -49,7 +49,7 @@ The app attempts Babylon WebGPU first. If WebGPU is unavailable or initializatio
 - Add camera bookmarks for featured projects.
 - Introduce lightweight ambient animation such as leaf sway or particle pollen.
 - Add filtering, timeline controls, or search once the baseline experience is stable.
-- Replace placeholder project data with your real portfolio content.
+- Expand the real portfolio dataset with more projects when needed.
 
 ## Intentionally Deferred
 

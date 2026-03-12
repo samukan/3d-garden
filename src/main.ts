@@ -24,7 +24,6 @@ async function bootstrap(): Promise<void> {
   const statusBar = createStatusBar(statusElement);
 
   const initialQuality: QualityMode = window.innerWidth < 960 ? "low" : "high";
-  statusBar.setQuality(initialQuality);
 
   const { engine, renderer } = await initEngine(canvas);
   statusBar.setRenderer(renderer);
@@ -46,7 +45,6 @@ async function bootstrap(): Promise<void> {
 
   createQualityToggle(qualityButton, initialQuality, (quality) => {
     sceneController.setQuality(quality);
-    statusBar.setQuality(quality);
   });
 
   let lastFpsRefresh = 0;

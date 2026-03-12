@@ -12,8 +12,12 @@ export function createQualityToggle(
   let currentQuality = initialQuality;
 
   const render = (): void => {
-    button.textContent = `Quality: ${currentQuality === "high" ? "High" : "Low"}`;
+    button.textContent = currentQuality === "high" ? "High detail" : "Low detail";
     button.setAttribute("aria-pressed", String(currentQuality === "high"));
+    button.setAttribute(
+      "aria-label",
+      currentQuality === "high" ? "Switch to low detail mode" : "Switch to high detail mode"
+    );
   };
 
   button.addEventListener("click", () => {

@@ -1,31 +1,33 @@
 import type { PortfolioItem } from "../types/portfolio";
 
+const biomeLabels: Record<PortfolioItem["biomeID"], string> = {
+  "creative-tech": "Creative Tech",
+  "ai-systems": "AI Systems",
+  "product-apps": "Product Apps"
+};
+
 export interface ProjectOverlayController {
   showDefault: () => void;
   showProject: (project: PortfolioItem) => void;
 }
 
 const defaultCardMarkup = `
-  <p class="eyebrow">How to use</p>
-  <h2>Explore the garden</h2>
+  <p class="eyebrow">Garden Overview</p>
+  <h2>Three project biomes</h2>
   <p>
-    Hover a tree to preview it, then click to focus the camera and open recruiter-friendly
-    project details.
+    Start in the central clearing, then explore creative tech on the left, AI systems ahead, and product apps on the right.
   </p>
-  <ul class="hint-list">
-    <li>Impact shapes height.</li>
-    <li>Scope thickens the trunk.</li>
-    <li>Tech stack adds branches and foliage.</li>
-    <li>Year moves projects through the garden timeline.</li>
-  </ul>
+  <p class="panel-note">The world is intentionally staged first. Project details stay available when you select a piece of work.</p>
 `;
 
 export function createProjectOverlay(element: HTMLElement): ProjectOverlayController {
   const showDefault = (): void => {
+    element.classList.add("is-compact");
     element.innerHTML = defaultCardMarkup;
   };
 
   const showProject = (project: PortfolioItem): void => {
+    element.classList.remove("is-compact");
     const techMarkup = project.tech
       .map((tech) => `<span class="tech-pill">${tech}</span>`)
       .join("");
@@ -37,26 +39,21 @@ export function createProjectOverlay(element: HTMLElement): ProjectOverlayContro
         </div>`
       : "";
 
+    const contributionsMarkup = project.contributions?.length
+      ? `<div class="project-section">
+          <span class="project-section-label">Key contributions</span>
+          <ul class="project-list">${project.contributions.slice(0, 2).map((item) => `<li>${item}</li>`).join("")}</ul>
+        </div>`
+      : "";
+
     element.innerHTML = `
       <p class="eyebrow">${project.featured ? "Featured project" : "Project focus"}</p>
       <h2>${project.title}</h2>
       <p>${project.summary}</p>
-      <div class="project-metrics">
-        <div>
-          <span>Year</span>
-          <strong>${project.year}</strong>
-        </div>
-        <div>
-          <span>Impact</span>
-          <strong>${project.impact}/10</strong>
-        </div>
-        <div>
-          <span>Scope</span>
-          <strong>${project.scope}/10</strong>
-        </div>
-      </div>
-      <p class="project-meta">Biome: ${project.biomeID} · Branches: ${project.tech.length}</p>
+      <p class="project-role">${project.role}</p>
+      <p class="project-meta">${biomeLabels[project.biomeID]} · ${project.tech.length} core technologies</p>
       <div class="tech-pill-row">${techMarkup}</div>
+      ${contributionsMarkup}
       ${linksMarkup}
     `;
   };

@@ -15,7 +15,7 @@ export function createSceneState(initialQuality: QualityMode): SceneRuntimeState
     hoveredProjectId: null,
     selectedProjectId: null,
     quality: initialQuality,
-    desiredCameraTarget: new Vector3(0, 5, 0),
-    desiredCameraRadius: 42
+    desiredCameraTarget: new Vector3(0, 4.8, 7.5),
+    desiredCameraRadius: 50
   };
 }

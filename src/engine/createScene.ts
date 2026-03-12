@@ -38,31 +38,36 @@ export async function createScene({
   const scene = new Scene(engine);
   const state = createSceneState(initialQuality);
 
-  scene.clearColor = new Color4(0.64, 0.8, 0.91, 1);
+  scene.clearColor = new Color4(0.75, 0.86, 0.9, 1);
+  scene.ambientColor = new Color3(0.18, 0.22, 0.21);
   scene.fogMode = Scene.FOGMODE_EXP2;
-  scene.fogDensity = 0.012;
-  scene.fogColor = new Color3(0.78, 0.88, 0.84);
+  scene.fogDensity = 0.0074;
+  scene.fogColor = new Color3(0.84, 0.89, 0.86);
 
-  const camera = new ArcRotateCamera("garden-camera", -Math.PI / 2.2, 1.08, 42, new Vector3(0, 5, 0), scene);
+  const defaultTarget = new Vector3(0, 4.8, 7.5);
+  const camera = new ArcRotateCamera("garden-camera", -Math.PI / 2, 1.02, 50, defaultTarget.clone(), scene);
   camera.attachControl(canvas, true);
-  camera.lowerRadiusLimit = 12;
-  camera.upperRadiusLimit = 70;
+  camera.lowerRadiusLimit = 15;
+  camera.upperRadiusLimit = 72;
   camera.wheelDeltaPercentage = 0.01;
   camera.panningSensibility = 0;
-  camera.lowerBetaLimit = 0.48;
-  camera.upperBetaLimit = 1.22;
+  camera.lowerBetaLimit = 0.58;
+  camera.upperBetaLimit = 1.16;
 
   const hemiLight = new HemisphericLight("hemi", new Vector3(0, 1, 0), scene);
-  hemiLight.intensity = 0.92;
-  hemiLight.groundColor = new Color3(0.17, 0.22, 0.18);
+  hemiLight.intensity = 0.9;
+  hemiLight.diffuse = new Color3(0.92, 0.95, 0.89);
+  hemiLight.groundColor = new Color3(0.15, 0.18, 0.16);
 
   const sunLight = new DirectionalLight("sun", new Vector3(-0.35, -1, 0.2), scene);
-  sunLight.position = new Vector3(28, 34, -18);
-  sunLight.intensity = 0.82;
+  sunLight.position = new Vector3(30, 36, -16);
+  sunLight.intensity = 0.92;
+  sunLight.diffuse = new Color3(1, 0.95, 0.84);
 
-  const ground = MeshBuilder.CreateGround("ground", { width: 96, height: 96, subdivisions: 2 }, scene);
+  const ground = MeshBuilder.CreateGround("ground", { width: 128, height: 112, subdivisions: 2 }, scene);
   const groundMaterial = new StandardMaterial("ground-material", scene);
-  groundMaterial.diffuseColor = new Color3(0.31, 0.47, 0.26);
+  groundMaterial.diffuseColor = new Color3(0.32, 0.41, 0.29);
+  groundMaterial.emissiveColor = new Color3(0.018, 0.024, 0.018);
   groundMaterial.specularColor = Color3.Black();
   ground.material = groundMaterial;
   ground.receiveShadows = true;
@@ -74,8 +79,8 @@ export async function createScene({
     garden.setSelected(projectId);
 
     if (!projectId) {
-      state.desiredCameraTarget = new Vector3(0, 5, 0);
-      state.desiredCameraRadius = 42;
+      state.desiredCameraTarget = defaultTarget.clone();
+      state.desiredCameraRadius = 50;
       onProjectSelected(null);
       return;
     }

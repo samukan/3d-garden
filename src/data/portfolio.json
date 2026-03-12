@@ -1,67 +1,149 @@
 [
   {
-    "id": "skill-garden",
+    "id": "3d-garden",
     "title": "Skill Garden",
-    "summary": "A recruiter-friendly portfolio experiment where project metadata grows a generated 3D landscape instead of a flat case-study list.",
-    "year": 2026,
-    "impact": 8,
-    "scope": 7,
-    "tech": ["TypeScript", "Babylon.js", "Vite", "WebGPU"],
-    "biomeID": "meadow",
-    "links": {
-      "repo": "https://github.com/example/skill-garden"
-    },
-    "featured": true
-  },
-  {
-    "id": "ops-orbit",
-    "title": "Ops Orbit",
-    "summary": "A release observability dashboard that combined deployment telemetry, incident context, and service ownership into one operational view.",
-    "year": 2024,
-    "impact": 9,
-    "scope": 8,
-    "tech": ["TypeScript", "Node.js", "PostgreSQL", "Grafana", "Docker"],
-    "biomeID": "orchard",
-    "links": {
-      "demo": "https://example.com/ops-orbit",
-      "repo": "https://github.com/example/ops-orbit"
-    },
-    "featured": true
-  },
-  {
-    "id": "studio-notes",
-    "title": "Studio Notes",
-    "summary": "A collaborative note workspace for design reviews that reduced context-switching and made decision logs easy to search later.",
-    "year": 2023,
-    "impact": 6,
+    "summary": "A visually distinctive portfolio concept where projects are generated into an interactive 3D garden from structured local data. Built to combine recruiter-friendly presentation with WebGPU-first rendering, procedural generation, instancing, and interactive exploration.",
+    "impact": 5,
     "scope": 5,
-    "tech": ["Vue", "Firebase", "TypeScript"],
-    "biomeID": "meadow",
+    "tech": ["TypeScript", "Vite", "Babylon.js", "WebGPU", "WebGL", "JSON", "Git", "GitHub"],
+    "biomeID": "creative-tech",
+    "role": "Solo project",
+    "contributions": [
+      "Designed and implemented the entire concept end-to-end",
+      "Built the rendering setup with WebGPU as primary renderer and WebGL fallback",
+      "Created data-driven scene generation, interaction logic, and portfolio presentation flow"
+    ],
+    "challenge": "Combining visual presentation, data-driven generation, rendering fallback, and performance-conscious structure in one coherent portfolio experience.",
     "links": {
-      "demo": "https://example.com/studio-notes"
-    }
+      "repo": "https://github.com/samukan/3d-garden"
+    },
+    "featured": true,
+    "order": 1
   },
   {
-    "id": "parcel-path",
-    "title": "Parcel Path",
-    "summary": "A logistics planning tool that surfaced route constraints and SLA risk early, helping teams choose better delivery strategies.",
-    "year": 2022,
-    "impact": 7,
-    "scope": 9,
-    "tech": ["React", "Mapbox", "Python", "FastAPI", "Redis"],
-    "biomeID": "orchard",
-    "links": {
-      "repo": "https://github.com/example/parcel-path"
-    }
-  },
-  {
-    "id": "signal-room",
-    "title": "Signal Room",
-    "summary": "A compact experimentation platform for product analytics events, built to validate tracking changes before they reached production.",
-    "year": 2021,
+    "id": "va-chat-service",
+    "title": "VA Chat Service",
+    "summary": "A TypeScript-based AI chat service for exchange-information workflows, designed around streaming responses, service-to-service security, and a RAG-ready architecture with future retrieval and ingestion support.",
     "impact": 5,
     "scope": 4,
-    "tech": ["Svelte", "TypeScript", "Playwright"],
-    "biomeID": "meadow"
+    "tech": ["TypeScript", "Node.js", "Fastify", "SSE", "HMAC", "Embeddings", "Vector Database", "RAG"],
+    "biomeID": "ai-systems",
+    "role": "Project team member, primary builder of the service",
+    "contributions": [
+      "Implemented the service architecture and core chat endpoint",
+      "Built SSE token streaming and service-level HMAC protection",
+      "Worked on the RAG-oriented foundation including embeddings and vector database direction"
+    ],
+    "challenge": "Designing a clean AI service foundation that supports secure streaming and future retrieval features without overcomplicating the first implementation.",
+    "links": {
+      "repo": "https://github.com/samukan/va-chat-service"
+    },
+    "featured": true,
+    "order": 2
+  },
+  {
+    "id": "go-exchange-client",
+    "title": "Go Exchange Client",
+    "summary": "A student exchange information platform designed to make destination research easier and support discovery through an AI assistant. The client combines product UI work with AI-oriented information access.",
+    "impact": 5,
+    "scope": 4,
+    "tech": ["Next.js", "React", "Tailwind CSS", "Leaflet", "Vitest", "React Testing Library", "RAG", "Vector Database"],
+    "biomeID": "ai-systems",
+    "role": "Project team developer",
+    "contributions": [
+      "Worked on AI-facing product functionality and selected frontend areas",
+      "Built backend-facing routes and integration paths for AI features",
+      "Contributed to vector database development for retrieval-augmented workflows"
+    ],
+    "challenge": "Connecting a practical user-facing product with AI-assisted search and retrieval in a way that stays genuinely useful.",
+    "links": {
+      "repo": "https://github.com/karripar/go-exchange-client"
+    },
+    "featured": true,
+    "order": 3
+  },
+  {
+    "id": "go-exchange-server",
+    "title": "Go Exchange Server",
+    "summary": "Backend services for the Go Exchange platform, built with a microservices-inspired structure. The project combines authentication, content management, upload handling, and AI-related routing in a service-oriented architecture.",
+    "impact": 5,
+    "scope": 4,
+    "tech": ["Node.js", "Express", "MongoDB", "Mongoose", "OAuth 2.0", "Authentication", "HMAC", "SSE", "Vitest", "Supertest"],
+    "biomeID": "ai-systems",
+    "role": "Project team developer",
+    "contributions": [
+      "Worked on AI-related routing and backend integration",
+      "Contributed to authentication-related functionality",
+      "Handled security-sensitive request flow concerns around HMAC and streamed responses"
+    ],
+    "challenge": "Implementing secure request handling and safe SSE parsing while keeping the service architecture practical and maintainable.",
+    "links": {
+      "repo": "https://github.com/karripar/go-exchange-server"
+    },
+    "featured": true,
+    "order": 4
+  },
+  {
+    "id": "pawpics",
+    "title": "PawPics",
+    "summary": "A social media style school project built with Next.js, focused on modern UI, content interaction, and user-facing product features. The project includes uploads, responsive layouts, and a component-driven frontend structure.",
+    "impact": 4,
+    "scope": 4,
+    "tech": ["Next.js", "React", "TypeScript", "Tailwind CSS", "Radix UI", "shadcn/ui", "Uploadthing", "Lucide"],
+    "biomeID": "product-apps",
+    "role": "Solo project",
+    "contributions": [
+      "Built the project independently from UI structure to feature implementation",
+      "Worked with routing, reusable UI patterns, uploads, and responsive layouts",
+      "Focused on making the app feel like a real product instead of a minimal exercise"
+    ],
+    "challenge": "Handling Next.js routing and tying together multiple UI and product-level features in a coherent way.",
+    "links": {
+      "repo": "https://github.com/samukan/pawpics"
+    },
+    "featured": true,
+    "order": 5
+  },
+  {
+    "id": "weedify-frontend",
+    "title": "Weedify Frontend",
+    "summary": "A mobile recipe-sharing application where users can discover, save, rate, comment on, and share recipes. Built as a team project with React Native and focused on mobile UX, content interaction, forms, and API-connected features.",
+    "impact": 4,
+    "scope": 4,
+    "tech": ["React Native", "Expo", "React Navigation", "Context API", "Zustand", "React Hook Form", "AsyncStorage", "Maestro"],
+    "biomeID": "product-apps",
+    "role": "Team project member",
+    "contributions": [
+      "Contributed across the frontend as part of a team project",
+      "Worked with API-connected mobile features, forms, and state handling",
+      "Learned and applied React Native in a more product-like mobile context"
+    ],
+    "challenge": "Working effectively in a team while learning a newer mobile stack and keeping the user experience consistent across features.",
+    "links": {
+      "repo": "https://github.com/karripar/weedify-frontend"
+    },
+    "featured": true,
+    "order": 6
+  },
+  {
+    "id": "weedify-backend",
+    "title": "Weedify Backend",
+    "summary": "Backend services for a recipe-sharing application, covering authentication, user profiles, recipe content, comments, ratings, favorites, follows, notifications, and media upload workflows.",
+    "impact": 4,
+    "scope": 4,
+    "tech": ["Node.js", "JWT", "Authentication", "REST API", "Media Upload", "E2E Testing"],
+    "biomeID": "product-apps",
+    "role": "Team project member",
+    "contributions": [
+      "Contributed to backend development as part of the project team",
+      "Worked in an environment involving auth flows, content features, and media-related logic",
+      "Gained experience from building a broader feature set across multiple connected backend concerns"
+    ],
+    "challenge": "Managing a larger backend feature surface that includes authentication, content actions, and user-driven interactions in one application.",
+    "links": {
+      "repo": "https://github.com/karripar/weedify-backend"
+    },
+    "featured": false,
+    "order": 7
   }
 ]
