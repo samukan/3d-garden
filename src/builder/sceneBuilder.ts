@@ -50,9 +50,11 @@ export interface SceneBuilderController {
   exportLayout: () => string;
   getSnapshot: () => BuilderSceneSnapshot;
   importLayout: (input: string, options?: ImportLayoutOptions) => Promise<{ success: boolean; error?: string }>;
+  isCameraNavigationEnabled: () => boolean;
   placeAsset: (assetId: AssetId) => Promise<void>;
   redo: () => Promise<boolean>;
   selectObjectById: (objectId: string | null) => void;
+  setCameraNavigationEnabled: (enabled: boolean) => void;
   subscribe: (listener: () => void) => () => void;
   clearUploads: () => Promise<{ success: boolean; removedCount: number; error?: string }>;
   undo: () => Promise<boolean>;
@@ -97,6 +99,7 @@ export async function createSceneBuilder({
   const scene = new Scene(engine);
   const developmentCamera = createDevelopmentCamera(scene, canvas);
   scene.activeCamera = developmentCamera.camera;
+  developmentCamera.setNavigationEnabled(false);
   const state = createBuilderSceneState();
   const selectionController = createSelectionController(scene);
   const listeners = new Set<() => void>();
@@ -168,6 +171,7 @@ export async function createSceneBuilder({
       meshCount: scene.meshes.length,
       rootNodes: scene.rootNodes.length,
       activeCamera: scene.activeCamera?.name ?? "none",
+      cameraNavigationEnabled: developmentCamera.isNavigationEnabled(),
       camera: {
         alpha: Number(developmentCamera.camera.alpha.toFixed(3)),
         beta: Number(developmentCamera.camera.beta.toFixed(3)),
@@ -263,6 +267,20 @@ export async function createSceneBuilder({
     selectedObject: getSelectedObjectSnapshot(),
     statusMessage: state.statusMessage
   });
+
+  const setCameraNavigationEnabled = (enabled: boolean): void => {
+    if (developmentCamera.isNavigationEnabled() === enabled) {
+      return;
+    }
+
+    developmentCamera.setNavigationEnabled(enabled);
+    dragState = null;
+    suppressNextPick = false;
+    state.statusMessage = enabled
+      ? "Camera navigation enabled."
+      : "Object edit mode enabled. Camera navigation locked.";
+    notify();
+  };
 
   const applyLayoutToEntry = (entry: PlacedObjectEntry): void => {
     const definition = assetDefinitions.get(entry.layout.assetId);
@@ -891,6 +909,11 @@ export async function createSceneBuilder({
         return;
       }
 
+      if (developmentCamera.isNavigationEnabled()) {
+        setSelection(objectId);
+        return;
+      }
+
       const groundPoint = getGroundPoint();
       const entry = placedObjects.get(objectId);
       if (!groundPoint || !entry) {
@@ -1008,7 +1031,7 @@ export async function createSceneBuilder({
   });
 
   state.isReady = true;
-  state.statusMessage = "Builder ready. Choose an asset and place it into the scene.";
+  state.statusMessage = "Builder ready. Camera is locked for object editing; enable camera mode in the top toolbar when needed.";
   logSceneSnapshot("ready");
 
   return {
@@ -1019,9 +1042,11 @@ export async function createSceneBuilder({
     exportLayout,
     getSnapshot,
     importLayout,
+    isCameraNavigationEnabled: () => developmentCamera.isNavigationEnabled(),
     placeAsset,
     redo,
     selectObjectById,
+    setCameraNavigationEnabled,
     subscribe: (listener) => {
       listeners.add(listener);
       return () => {

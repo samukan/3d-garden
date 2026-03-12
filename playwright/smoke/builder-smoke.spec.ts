@@ -32,10 +32,9 @@ test("boots builder mode and supports basic layout actions", async ({ page, base
 
   await expect(page.locator("#renderCanvas")).toBeVisible();
   await expect(page.locator("#builder-workspace")).toBeVisible();
-  await expect(page.locator("#app-nav-actions")).toBeVisible();
-  await expect(page.locator("#app-edit-link")).toBeHidden();
-  await expect(page.locator("#app-menu-link")).toBeVisible();
-  await expect(page.locator("#app-menu-link")).toHaveText("Back To Menu");
+  await expect(page.locator("#app-nav-actions")).toBeHidden();
+  await expect(page.locator("#builder-back-to-menu")).toBeVisible();
+  await expect(page.locator("#builder-camera-nav-toggle")).toBeVisible();
   const libraryPanel = page.locator("#builder-library-panel");
   const resizeHandle = page.locator("#builder-resize-handle");
 

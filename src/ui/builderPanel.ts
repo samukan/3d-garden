@@ -25,12 +25,37 @@ export interface CreateBuilderPanelOptions {
 }
 
 const topBarMarkup = `
-  <div class="builder-top-bar-actions">
-    <button id="builder-upload-asset" class="ui-button builder-button builder-button-primary" type="button">Upload Assets (.glb)</button>
-    <button id="builder-clear-uploads" class="ui-button builder-button" type="button">Clear uploads</button>
-    <input id="builder-upload-asset-input" type="file" accept=".glb,model/gltf-binary" hidden />
+  <div class="builder-top-bar-main">
+    <div class="builder-top-bar-actions builder-top-bar-actions-world">
+      <label class="builder-field builder-top-bar-field">
+        <span>World name</span>
+        <input id="builder-world-name" type="text" maxlength="80" />
+      </label>
+      <button id="builder-save-world" class="ui-button builder-button builder-button-primary" type="button">Save New</button>
+      <button id="builder-save-world-as" class="ui-button builder-button" type="button">Save As</button>
+      <button id="builder-view-world" class="ui-button builder-button" type="button">View Saved</button>
+      <button id="builder-back-to-menu" class="ui-button builder-button" type="button">Back To Menu</button>
+    </div>
+    <div class="builder-top-bar-actions builder-top-bar-actions-tools">
+      <button id="builder-camera-nav-toggle" class="ui-button builder-button" type="button" aria-pressed="false">Object Edit Mode</button>
+      <button id="builder-upload-asset" class="ui-button builder-button builder-button-primary" type="button">Upload Assets (.glb)</button>
+      <button id="builder-clear-uploads" class="ui-button builder-button" type="button">Clear uploads</button>
+      <input id="builder-upload-asset-input" type="file" accept=".glb,model/gltf-binary" hidden />
+    </div>
   </div>
-  <div class="builder-top-bar-actions builder-top-bar-actions-secondary" aria-hidden="true"></div>
+  <div class="builder-top-bar-main">
+    <div class="builder-top-bar-actions builder-top-bar-actions-json">
+      <button id="builder-export" class="ui-button builder-button" type="button">Export JSON</button>
+      <button id="builder-import" class="ui-button builder-button" type="button">Import JSON</button>
+      <button id="builder-download-world-json" class="ui-button builder-button" type="button">Download JSON</button>
+      <button id="builder-upload-world-json" class="ui-button builder-button" type="button">Upload JSON</button>
+      <input id="builder-upload-world-json-input" type="file" accept=".json,application/json" hidden />
+    </div>
+    <p id="builder-camera-mode-note" class="builder-status builder-camera-mode-note"></p>
+  </div>
+  <p id="builder-world-status" class="builder-status builder-world-status"></p>
+  <label class="builder-textarea-label builder-top-bar-layout-label" for="builder-layout-json">World JSON (manual paste/inspect)</label>
+  <textarea id="builder-layout-json" class="builder-textarea builder-top-bar-layout-json" spellcheck="false"></textarea>
 `;
 
 const libraryPanelMarkup = `
@@ -65,30 +90,14 @@ const inspectorPanelMarkup = `
   <div class="builder-panel-header">
     <p class="builder-panel-kicker">Inspector</p>
     <h2>Selected object</h2>
-    <p class="builder-panel-copy">Edit the current object or select one in the scene.</p>
+    <p class="builder-panel-copy">Edit the selected object only. World and camera controls are in the top toolbar.</p>
   </div>
   <div class="builder-panel-section builder-panel-section-no-border builder-panel-section-tight">
-    <span class="builder-panel-label">World Save</span>
-    <label class="builder-field builder-field-full builder-world-name-field">
-      <span>World name</span>
-      <input id="builder-world-name" type="text" maxlength="80" />
-    </label>
-    <div class="builder-action-row builder-action-row-split builder-world-actions">
-      <button id="builder-save-world" class="ui-button builder-button builder-button-primary builder-button-block" type="button">Save</button>
-      <button id="builder-save-world-as" class="ui-button builder-button builder-button-block" type="button">Save As</button>
-    </div>
-    <div class="builder-action-row builder-action-row-split builder-world-actions-secondary">
-      <button id="builder-view-world" class="ui-button builder-button builder-button-block" type="button">View Saved</button>
-      <button id="builder-back-to-menu" class="ui-button builder-button builder-button-block" type="button">Back To Menu</button>
-    </div>
-    <p id="builder-world-status" class="builder-status builder-world-status"></p>
-  </div>
-  <div class="builder-panel-section">
     <span class="builder-panel-label">Object</span>
     <div id="builder-selection-summary" class="builder-selection-summary"></div>
     <div class="builder-panel-subsection">
       <span class="builder-panel-label">Quick Move</span>
-      <p class="builder-control-note">Drag in the scene or nudge by 0.25 units.</p>
+      <p class="builder-control-note">Use object-edit mode to drag safely, or nudge by 0.25 units here.</p>
       <div id="builder-move-controls" class="builder-control-grid builder-control-grid-move">
         <button class="ui-button builder-button builder-control-button" type="button" data-move-axis="z" data-move-delta="-0.25">Z-</button>
         <button class="ui-button builder-button builder-control-button" type="button" data-move-axis="y" data-move-delta="0.25">Y+</button>
@@ -131,20 +140,6 @@ const inspectorPanelMarkup = `
       <button id="builder-duplicate" class="ui-button builder-button builder-button-block" type="button">Duplicate</button>
       <button id="builder-delete" class="ui-button builder-button builder-button-danger builder-button-block" type="button">Delete</button>
     </div>
-  </div>
-  <div class="builder-panel-section">
-    <span class="builder-panel-label">Layout JSON</span>
-    <div class="builder-action-row builder-action-row-split">
-      <button id="builder-export" class="ui-button builder-button builder-button-block" type="button">Export</button>
-      <button id="builder-import" class="ui-button builder-button builder-button-block" type="button">Import</button>
-    </div>
-    <div class="builder-action-row builder-action-row-split">
-      <button id="builder-download-world-json" class="ui-button builder-button builder-button-block" type="button">Download JSON</button>
-      <button id="builder-upload-world-json" class="ui-button builder-button builder-button-block" type="button">Upload JSON</button>
-      <input id="builder-upload-world-json-input" type="file" accept=".json,application/json" hidden />
-    </div>
-    <label class="builder-textarea-label" for="builder-layout-json">Manual JSON (paste or inspect)</label>
-    <textarea id="builder-layout-json" class="builder-textarea" spellcheck="false"></textarea>
   </div>
   <p id="builder-status" class="builder-status"></p>
 `;
@@ -225,24 +220,26 @@ export function createBuilderPanel(
   const uploadAssetInput = topBar.querySelector<HTMLInputElement>("#builder-upload-asset-input");
   const uploadAssetButton = topBar.querySelector<HTMLButtonElement>("#builder-upload-asset");
   const clearUploadsButton = topBar.querySelector<HTMLButtonElement>("#builder-clear-uploads");
+  const cameraNavToggleButton = topBar.querySelector<HTMLButtonElement>("#builder-camera-nav-toggle");
+  const cameraModeNoteElement = topBar.querySelector<HTMLElement>("#builder-camera-mode-note");
   const paletteElement = libraryPanel.querySelector<HTMLElement>("#builder-palette");
   const sceneObjectsElement = libraryPanel.querySelector<HTMLElement>("#builder-scene-objects");
   const selectionSummaryElement = inspectorPanel.querySelector<HTMLElement>("#builder-selection-summary");
   const statusElement = inspectorPanel.querySelector<HTMLElement>("#builder-status");
-  const worldStatusElement = inspectorPanel.querySelector<HTMLElement>("#builder-world-status");
-  const worldNameInput = inspectorPanel.querySelector<HTMLInputElement>("#builder-world-name");
-  const layoutTextarea = inspectorPanel.querySelector<HTMLTextAreaElement>("#builder-layout-json");
+  const worldStatusElement = topBar.querySelector<HTMLElement>("#builder-world-status");
+  const worldNameInput = topBar.querySelector<HTMLInputElement>("#builder-world-name");
+  const layoutTextarea = topBar.querySelector<HTMLTextAreaElement>("#builder-layout-json");
   const duplicateButton = inspectorPanel.querySelector<HTMLButtonElement>("#builder-duplicate");
   const deleteButton = inspectorPanel.querySelector<HTMLButtonElement>("#builder-delete");
-  const exportButton = inspectorPanel.querySelector<HTMLButtonElement>("#builder-export");
-  const importButton = inspectorPanel.querySelector<HTMLButtonElement>("#builder-import");
-  const downloadWorldJsonButton = inspectorPanel.querySelector<HTMLButtonElement>("#builder-download-world-json");
-  const uploadWorldJsonButton = inspectorPanel.querySelector<HTMLButtonElement>("#builder-upload-world-json");
-  const uploadWorldJsonInput = inspectorPanel.querySelector<HTMLInputElement>("#builder-upload-world-json-input");
-  const saveWorldButton = inspectorPanel.querySelector<HTMLButtonElement>("#builder-save-world");
-  const saveWorldAsButton = inspectorPanel.querySelector<HTMLButtonElement>("#builder-save-world-as");
-  const viewWorldButton = inspectorPanel.querySelector<HTMLButtonElement>("#builder-view-world");
-  const backToMenuButton = inspectorPanel.querySelector<HTMLButtonElement>("#builder-back-to-menu");
+  const exportButton = topBar.querySelector<HTMLButtonElement>("#builder-export");
+  const importButton = topBar.querySelector<HTMLButtonElement>("#builder-import");
+  const downloadWorldJsonButton = topBar.querySelector<HTMLButtonElement>("#builder-download-world-json");
+  const uploadWorldJsonButton = topBar.querySelector<HTMLButtonElement>("#builder-upload-world-json");
+  const uploadWorldJsonInput = topBar.querySelector<HTMLInputElement>("#builder-upload-world-json-input");
+  const saveWorldButton = topBar.querySelector<HTMLButtonElement>("#builder-save-world");
+  const saveWorldAsButton = topBar.querySelector<HTMLButtonElement>("#builder-save-world-as");
+  const viewWorldButton = topBar.querySelector<HTMLButtonElement>("#builder-view-world");
+  const backToMenuButton = topBar.querySelector<HTMLButtonElement>("#builder-back-to-menu");
   const posXInput = inspectorPanel.querySelector<HTMLInputElement>("#builder-pos-x");
   const posYInput = inspectorPanel.querySelector<HTMLInputElement>("#builder-pos-y");
   const posZInput = inspectorPanel.querySelector<HTMLInputElement>("#builder-pos-z");
@@ -260,6 +257,8 @@ export function createBuilderPanel(
     !uploadAssetInput ||
     !uploadAssetButton ||
     !clearUploadsButton ||
+    !cameraNavToggleButton ||
+    !cameraModeNoteElement ||
     !paletteElement ||
     !sceneObjectsElement ||
     !selectionSummaryElement ||
@@ -295,6 +294,7 @@ export function createBuilderPanel(
   let activeLibraryTab: BuilderLibraryTab = "assets";
   let worldState = { ...options.worldState };
   let worldNameDraft = worldState.currentWorldName;
+  let cameraNavigationEnabled = sceneBuilder.isCameraNavigationEnabled();
 
   const transformInputs = [posXInput, posYInput, posZInput, rotYInput, scaleInput];
   const manipulationButtons = [
@@ -488,6 +488,16 @@ export function createBuilderPanel(
     worldStatusElement.textContent = `${worldState.persistenceMessage}${dirtyLabel}`.trim();
   };
 
+  const renderCameraMode = (): void => {
+    cameraNavigationEnabled = sceneBuilder.isCameraNavigationEnabled();
+    cameraNavToggleButton.setAttribute("aria-pressed", String(cameraNavigationEnabled));
+    cameraNavToggleButton.classList.toggle("builder-button-primary", cameraNavigationEnabled);
+    cameraNavToggleButton.textContent = cameraNavigationEnabled ? "Camera Nav Mode" : "Object Edit Mode";
+    cameraModeNoteElement.textContent = cameraNavigationEnabled
+      ? "Camera navigation is enabled (object dragging is paused). Drag to orbit and use the wheel to zoom."
+      : "Camera is locked for object editing. Switch to Camera Nav mode to move the view.";
+  };
+
   const render = (): void => {
     const snapshot = sceneBuilder.getSnapshot();
     renderPalette(snapshot);
@@ -502,6 +512,7 @@ export function createBuilderPanel(
     }
 
     renderWorldState();
+    renderCameraMode();
     renderSelection(snapshot);
     renderStatus(snapshot);
   };
@@ -683,6 +694,12 @@ export function createBuilderPanel(
           : "No uploaded assets to clear.";
       showToast(message, "info");
     });
+  });
+
+  cameraNavToggleButton.addEventListener("click", () => {
+    const nextEnabled = !sceneBuilder.isCameraNavigationEnabled();
+    sceneBuilder.setCameraNavigationEnabled(nextEnabled);
+    renderCameraMode();
   });
 
   uploadAssetInput.addEventListener("change", () => {

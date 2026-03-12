@@ -12,7 +12,9 @@ export interface CameraOverviewFrame {
 export interface DevelopmentCameraController {
   camera: ArcRotateCamera;
   overviewFrame: CameraOverviewFrame;
+  isNavigationEnabled: () => boolean;
   resetOverview: (logToConsole?: boolean) => void;
+  setNavigationEnabled: (enabled: boolean) => void;
   setOverviewFrame: (frame: CameraOverviewFrame, applyNow?: boolean) => void;
   dispose: () => void;
 }
@@ -44,7 +46,18 @@ export function createDevelopmentCamera(scene: Scene, canvas: HTMLCanvasElement)
     scene
   );
 
-  camera.attachControl(false, false, 2);
+  let navigationEnabled = true;
+
+  const applyNavigationEnabled = (): void => {
+    if (navigationEnabled) {
+      camera.attachControl(false, false, 2);
+      return;
+    }
+
+    camera.detachControl();
+  };
+
+  applyNavigationEnabled();
   camera.lowerRadiusLimit = 2.4;
   camera.upperRadiusLimit = 110;
   camera.wheelDeltaPercentage = 0.03;
@@ -83,7 +96,12 @@ export function createDevelopmentCamera(scene: Scene, canvas: HTMLCanvasElement)
   return {
     camera,
     overviewFrame: currentOverviewFrame,
+    isNavigationEnabled: () => navigationEnabled,
     resetOverview,
+    setNavigationEnabled: (enabled) => {
+      navigationEnabled = enabled;
+      applyNavigationEnabled();
+    },
     setOverviewFrame: (frame, applyNow = false) => {
       currentOverviewFrame.alpha = frame.alpha;
       currentOverviewFrame.beta = frame.beta;

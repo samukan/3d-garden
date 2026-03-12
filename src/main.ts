@@ -205,11 +205,9 @@ async function bootstrap(): Promise<void> {
     appTitle.textContent = "Skill Garden Builder";
     appCopy.textContent = "Internal scene layout tool for selecting assets, placing them, and editing the current selection.";
 
-    navActionsElement.hidden = false;
+    navActionsElement.hidden = true;
     editLinkElement.hidden = true;
-    menuLinkElement.hidden = false;
-    menuLinkElement.href = buildAppHref({ mode: "menu" });
-    menuLinkElement.textContent = "Back To Menu";
+    menuLinkElement.hidden = true;
     infoToggleButton.hidden = false;
     setInfoPanelState(false);
     builderWorkspace.hidden = false;
