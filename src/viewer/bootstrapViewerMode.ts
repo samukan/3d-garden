@@ -161,10 +161,10 @@ export async function bootstrapViewerMode(options: BootstrapViewerModeOptions): 
   }
 
   const world = worldResolution.world;
-  const atmosphereProfile =
-    world.source === "saved-world" && world.sourceId === EKA_PRESENTATION_WORLD_ID
-      ? "ekaPresentation"
-      : "default";
+  const isEkaPresentationWorld =
+    world.source === "saved-world" && world.sourceId === EKA_PRESENTATION_WORLD_ID;
+  const atmosphereProfile = isEkaPresentationWorld ? "ekaPresentation" : "default";
+  const cameraPresentationProfile = isEkaPresentationWorld ? "ekaShowcase" : "default";
 
   appTitle.textContent = world.name;
   appCopy.textContent = "Read-only world presentation mode.";
@@ -197,6 +197,7 @@ export async function bootstrapViewerMode(options: BootstrapViewerModeOptions): 
       engine,
       layoutRecords: world.layoutRecords,
       atmosphereProfile,
+      cameraPresentationProfile,
       enableDevFreeCamera: devFreeCameraEnabled,
       onCameraModeChange: (cameraMode) => {
         patchViewerPanelState({
@@ -295,6 +296,7 @@ export async function bootstrapViewerMode(options: BootstrapViewerModeOptions): 
       engine,
       layoutRecords: [],
       atmosphereProfile,
+      cameraPresentationProfile,
       enableDevFreeCamera: devFreeCameraEnabled
     });
     resetView = fallbackScene.resetView;

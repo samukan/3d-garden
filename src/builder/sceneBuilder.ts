@@ -150,9 +150,7 @@ export async function createSceneBuilder({
 
   scene.clearColor = new Color4(0.79, 0.87, 0.92, 1);
   scene.ambientColor = new Color3(0.2, 0.24, 0.22);
-  scene.fogMode = Scene.FOGMODE_EXP2;
-  scene.fogDensity = 0.0056;
-  scene.fogColor = new Color3(0.86, 0.91, 0.9);
+  scene.fogMode = Scene.FOGMODE_NONE;
 
   const hemiLight = new HemisphericLight("builder-hemi", new Vector3(0, 1, 0), scene);
   hemiLight.intensity = 0.95;

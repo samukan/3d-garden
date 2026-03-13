@@ -16,6 +16,7 @@ import type { AssetDefinition } from "../generation/natureKitAssetManifest";
 import { createAssetDefinitionMap, loadAssetDefinitions } from "../generation/assetCatalog";
 import { loadNatureKitAssetLibrary } from "../generation/NatureKitAssetLoader";
 import { degreesToRadians } from "../utils/angle";
+import { logBrowserDebug } from "../utils/browserDebug";
 import { enableMeshVertexColors } from "../utils/meshColors";
 import type { ViewerLoadIssue, ViewerWorldBounds } from "../viewer/viewerTypes";
 import {
@@ -29,6 +30,7 @@ interface CreateLayoutSceneOptions {
   engine: Engine | WebGPUEngine;
   layoutRecords: BuilderLayoutRecord[];
   atmosphereProfile?: ViewerAtmosphereProfile;
+  cameraPresentationProfile?: ViewerCameraPresentationProfile;
   enableDevFreeCamera?: boolean;
   onProgress?: (progress: {
     totalObjectCount: number;
@@ -54,10 +56,17 @@ export interface LayoutSceneController {
 }
 
 export type ViewerAtmosphereProfile = "default" | "ekaPresentation";
+export type ViewerCameraPresentationProfile = "default" | "ekaShowcase";
 
 interface MaterialTintProfile {
   key: "grass" | "cliff" | "path";
   diffuseMultiplier: Color3;
+}
+
+interface HeroFocusCandidate {
+  center: Vector3;
+  height: number;
+  treePriority: number;
 }
 
 type TintableMaterial = Material & {
@@ -183,6 +192,7 @@ export async function createLayoutScene({
   engine,
   layoutRecords,
   atmosphereProfile = "default",
+  cameraPresentationProfile = "default",
   enableDevFreeCamera = false,
   onProgress,
   onCameraModeChange
@@ -254,6 +264,7 @@ export async function createLayoutScene({
   const skippedAssetIds: string[] = [];
   const loadIssues: ViewerLoadIssue[] = [];
   const tintedMaterialCache = new Map<string, Material>();
+  const heroFocusCandidates: HeroFocusCandidate[] = [];
   let worldMin: Vector3 | null = null;
   let worldMax: Vector3 | null = null;
   const totalObjectCount = layoutRecords.length;
@@ -311,6 +322,16 @@ export async function createLayoutScene({
       const hierarchyBounds = root.getHierarchyBoundingVectors(true);
       worldMin = worldMin ? Vector3.Minimize(worldMin, hierarchyBounds.min) : hierarchyBounds.min.clone();
       worldMax = worldMax ? Vector3.Maximize(worldMax, hierarchyBounds.max) : hierarchyBounds.max.clone();
+
+      const assetIdLower = record.assetId.toLowerCase();
+      const treePriority = definition.groupId === "trees" ? 2 : assetIdLower.includes("tree") ? 1 : 0;
+      if (treePriority > 0) {
+        heroFocusCandidates.push({
+          center: hierarchyBounds.min.add(hierarchyBounds.max).scale(0.5),
+          height: Math.max(0.5, hierarchyBounds.max.y - hierarchyBounds.min.y),
+          treePriority
+        });
+      }
     } catch (error) {
       console.warn(`Viewer failed to instantiate asset: ${record.assetId}`, error);
       skippedObjectCount += 1;
@@ -349,22 +370,65 @@ export async function createLayoutScene({
     }
 
     const key = event.key.toLowerCase();
-    if (key === "r") {
+    const isReset = key === "r";
+    const isModeToggle = key === "f" && event.shiftKey && viewerCameraRig.canUseDevFree();
+
+    if (!isReset && !isModeToggle) {
+      viewerCameraRig.cancelCinematic("keyboard");
+      return;
+    }
+
+    if (isReset) {
+      viewerCameraRig.cancelCinematic("keyboard-reset");
       viewerCameraRig.resetView(true);
       emitCameraModeChange();
       return;
     }
 
-    if (key === "f" && event.shiftKey && viewerCameraRig.canUseDevFree()) {
+    if (isModeToggle) {
+      viewerCameraRig.cancelCinematic("keyboard-mode-toggle");
       event.preventDefault();
       viewerCameraRig.toggleMode();
       emitCameraModeChange();
     }
   };
 
+  const handlePointerDown = (): void => {
+    viewerCameraRig.cancelCinematic("pointerdown");
+  };
+
+  const handleWheel = (): void => {
+    viewerCameraRig.cancelCinematic("wheel");
+  };
+
+  if (cameraPresentationProfile === "ekaShowcase" && worldBounds) {
+    const orbitTarget = new Vector3(worldBounds.center.x, Math.max(0.5, worldBounds.center.y), worldBounds.center.z);
+    logBrowserDebug("viewer-cinematic:profile-applied", {
+      cameraPresentationProfile,
+      heroCandidateCount: heroFocusCandidates.length,
+      orbitTarget: {
+        x: Number(orbitTarget.x.toFixed(2)),
+        y: Number(orbitTarget.y.toFixed(2)),
+        z: Number(orbitTarget.z.toFixed(2))
+      }
+    });
+    viewerCameraRig.startCinematic({
+      preset: "microSmallWorld",
+      heroTarget: orbitTarget,
+      heroHeight: Math.max(1, worldBounds.size.y),
+      revealDurationMs: 4200,
+      settleDurationMs: 0,
+      holdDurationMs: 0
+    });
+  }
+
   window.addEventListener("keydown", handleKeyDown);
+  canvas.addEventListener("pointerdown", handlePointerDown);
+  canvas.addEventListener("wheel", handleWheel, { passive: true });
   scene.onDisposeObservable.add(() => {
     window.removeEventListener("keydown", handleKeyDown);
+    canvas.removeEventListener("pointerdown", handlePointerDown);
+    canvas.removeEventListener("wheel", handleWheel);
     assetLibrary.dispose();
     viewerCameraRig.dispose();
   });
