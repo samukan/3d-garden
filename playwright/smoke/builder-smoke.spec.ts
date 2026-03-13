@@ -73,7 +73,15 @@ test("boots builder mode and supports basic layout actions", async ({ page, base
   const firstPaletteButton = page.locator("#builder-palette button").first();
   await expect(firstPaletteButton).toBeVisible();
   await firstPaletteButton.click();
+  await expect(page.locator("#builder-rollout-panel")).toHaveClass(/is-visible/);
+  await page.locator("#renderCanvas").click();
+  await expect(page.locator("#builder-rollout-panel")).not.toHaveClass(/is-visible/);
+  await firstPaletteButton.click();
+  await expect(page.locator("#builder-rollout-panel")).toHaveClass(/is-visible/);
   await page.locator("#builder-place-asset").click();
+  await expect(page.locator("#builder-rollout-panel")).not.toHaveClass(/is-visible/);
+  await firstPaletteButton.click();
+  await expect(page.locator("#builder-rollout-panel")).toHaveClass(/is-visible/);
   await page.locator("#builder-place-asset").click();
 
   await expect(page.locator("#builder-status")).toContainText("Placed", {

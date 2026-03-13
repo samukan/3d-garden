@@ -311,6 +311,7 @@ export function createBuilderPanel(
   let worldNameDraft = worldState.currentWorldName;
   let cameraNavigationEnabled = sceneBuilder.isCameraNavigationEnabled();
   let advancedToolsOpen = false;
+  let assetRolloutDismissed = false;
 
   const transformInputs = [posXInput, posYInput, posZInput, rotYInput, scaleInput];
   const manipulationButtons = [
@@ -341,7 +342,11 @@ export function createBuilderPanel(
       return;
     }
 
+    const previousSelectedAssetId = selectedAssetId;
     selectedAssetId = snapshot.palette[0]?.assetId ?? null;
+    if (selectedAssetId !== previousSelectedAssetId) {
+      assetRolloutDismissed = false;
+    }
   };
 
   const setActiveLibraryTab = (tab: BuilderLibraryTab): void => {
@@ -379,6 +384,11 @@ export function createBuilderPanel(
       return;
     }
 
+    if (assetRolloutDismissed) {
+      rolloutPanel.classList.remove("is-visible");
+      return;
+    }
+
     rolloutContentElement.innerHTML = `
       <p class="builder-rollout-title">${escapeHtml(selectedItem.label)}</p>
       <button id="builder-place-asset" class="ui-button builder-button builder-button-primary builder-button-block" type="button">Add to scene</button>
@@ -391,6 +401,8 @@ export function createBuilderPanel(
         if (!selectedAssetId) {
           return;
         }
+        assetRolloutDismissed = true;
+        rolloutPanel.classList.remove("is-visible");
         void sceneBuilder.placeAsset(selectedAssetId);
       });
     }
@@ -670,6 +682,7 @@ export function createBuilderPanel(
     }
 
     selectedAssetId = assetId;
+    assetRolloutDismissed = false;
     render();
   });
 
@@ -736,20 +749,24 @@ export function createBuilderPanel(
   });
 
   const handleDocumentPointerDown = (event: PointerEvent): void => {
-    if (!advancedToolsOpen) {
-      return;
-    }
-
     const target = event.target;
     if (!(target instanceof HTMLElement)) {
       return;
     }
 
-    if (advancedToolsPanel.contains(target) || advancedToolsToggleButton.contains(target)) {
-      return;
+    if (advancedToolsOpen && !advancedToolsPanel.contains(target) && !advancedToolsToggleButton.contains(target)) {
+      setAdvancedToolsOpen(false);
     }
 
-    setAdvancedToolsOpen(false);
+    if (
+      activeLibraryTab === "assets" &&
+      rolloutPanel.classList.contains("is-visible") &&
+      !rolloutPanel.contains(target) &&
+      !libraryPanel.contains(target)
+    ) {
+      assetRolloutDismissed = true;
+      rolloutPanel.classList.remove("is-visible");
+    }
   };
 
   document.addEventListener("pointerdown", handleDocumentPointerDown);
