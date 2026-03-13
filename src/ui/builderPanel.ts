@@ -74,8 +74,9 @@ const libraryPanelMarkup = `
   </div>
   <div class="builder-panel-section builder-panel-section-no-border builder-panel-section-tight builder-library-tools">
     <span class="builder-panel-label">Library Tools</span>
-    <div class="builder-action-row builder-action-row-split">
+    <div class="builder-action-row builder-action-row-upload-tools">
       <button id="builder-upload-asset" class="ui-button builder-button builder-button-block" type="button">Upload Assets (.glb)</button>
+      <button id="builder-remove-upload" class="ui-button builder-button builder-button-block" type="button">Remove selected upload</button>
       <button id="builder-clear-uploads" class="ui-button builder-button builder-button-block" type="button">Clear uploads</button>
       <input id="builder-upload-asset-input" type="file" accept=".glb,model/gltf-binary" multiple hidden />
     </div>
@@ -276,6 +277,7 @@ export function createBuilderPanel(
   const sceneTabPanel = libraryPanel.querySelector<HTMLElement>("#builder-scene-panel");
   const uploadAssetInput = libraryPanel.querySelector<HTMLInputElement>("#builder-upload-asset-input");
   const uploadAssetButton = libraryPanel.querySelector<HTMLButtonElement>("#builder-upload-asset");
+  const removeUploadButton = libraryPanel.querySelector<HTMLButtonElement>("#builder-remove-upload");
   const clearUploadsButton = libraryPanel.querySelector<HTMLButtonElement>("#builder-clear-uploads");
   const uploadSortSelect = libraryPanel.querySelector<HTMLSelectElement>("#builder-upload-sort");
   const renameCategoryButton = libraryPanel.querySelector<HTMLButtonElement>("#builder-rename-upload-category");
@@ -320,6 +322,7 @@ export function createBuilderPanel(
     !sceneTabPanel ||
     !uploadAssetInput ||
     !uploadAssetButton ||
+    !removeUploadButton ||
     !clearUploadsButton ||
     !uploadSortSelect ||
     !renameCategoryButton ||
@@ -473,7 +476,12 @@ export function createBuilderPanel(
 
   const renderLibraryTools = (snapshot: BuilderSceneSnapshot): void => {
     const selectedItem = getSelectedPaletteItem(snapshot);
+    const selectedUploadedAssetLabel = selectedItem?.sourceType === "uploaded" ? selectedItem.label : null;
     const selectedCategory = selectedItem?.sourceType === "uploaded" ? selectedItem.uploadedCategory : null;
+    removeUploadButton.disabled = !selectedUploadedAssetLabel;
+    removeUploadButton.title = selectedUploadedAssetLabel
+      ? `Remove uploaded asset "${selectedUploadedAssetLabel}" only.`
+      : "Select an uploaded asset to remove it.";
     renameCategoryButton.disabled = !selectedCategory;
     renameCategoryButton.title = selectedCategory
       ? `Rename category "${selectedCategory}".`
@@ -1009,6 +1017,34 @@ export function createBuilderPanel(
           ? `Cleared ${result.removedCount} uploaded asset${result.removedCount === 1 ? "" : "s"}.`
           : "No uploaded assets to clear.";
       showToast(message, "info");
+    });
+  });
+
+  removeUploadButton.addEventListener("click", () => {
+    const snapshot = sceneBuilder.getSnapshot();
+    const selectedItem = getSelectedPaletteItem(snapshot);
+    if (!selectedItem || selectedItem.sourceType !== "uploaded") {
+      showToast("Select an uploaded asset to remove it.", "info");
+      return;
+    }
+
+    const confirmed = window.confirm(`Remove uploaded asset "${selectedItem.label}"?`);
+    if (!confirmed) {
+      return;
+    }
+
+    void sceneBuilder.removeUploadedAsset(selectedItem.assetId).then((result) => {
+      if (!result.success) {
+        showToast(result.error ?? "Uploaded asset removal failed.", "error");
+        return;
+      }
+
+      const message =
+        result.removedObjectCount > 0
+          ? `Removed "${selectedItem.label}" and ${result.removedObjectCount} placed instance${result.removedObjectCount === 1 ? "" : "s"}.`
+          : `Removed "${selectedItem.label}".`;
+      showToast(message, "info");
+      render();
     });
   });
 

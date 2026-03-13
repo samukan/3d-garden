@@ -94,6 +94,9 @@ export interface SceneBuilderController {
   ) => Promise<UploadedAssetBatchUploadResult>;
   uploadAsset: (file: File) => Promise<{ success: boolean; assetId?: AssetId; error?: string }>;
   renameUploadedAssetCategory: (assetId: AssetId, nextCategory: string) => Promise<{ success: boolean; error?: string }>;
+  removeUploadedAsset: (
+    assetId: AssetId
+  ) => Promise<{ success: boolean; removedObjectCount: number; error?: string }>;
   updateSelectedTransform: (patch: {
     position?: Partial<BuilderVector3>;
     rotationY?: number;
@@ -609,13 +612,17 @@ export async function createSceneBuilder({
 
   const disposeEntry = (entry: PlacedObjectEntry): void => {
     unregisterNodeMap(entry);
-    entry.root.dispose(false, true);
+    // Instances can share material/texture resources from their source container.
+    // Avoid disposing shared materials during object delete/undo/redo restores.
+    entry.root.dispose(false);
     placedObjects.delete(entry.layout.id);
   };
 
   const clearAllObjects = (): void => {
     for (const entry of placedObjects.values()) {
-      entry.root.dispose(false, true);
+      // Instances can share material/texture resources from their source container.
+      // Avoid disposing shared materials during object delete/undo/redo restores.
+      entry.root.dispose(false);
     }
 
     placedObjects.clear();
@@ -1196,6 +1203,82 @@ export async function createSceneBuilder({
     }
   };
 
+  const pruneAssetFromHistorySnapshot = (
+    snapshot: BuilderHistorySnapshot,
+    assetId: AssetId
+  ): BuilderHistorySnapshot => {
+    const nextLayoutRecords = snapshot.layoutRecords
+      .filter((record) => record.assetId !== assetId)
+      .map(cloneLayoutRecord);
+    const selectedObjectId =
+      snapshot.selectedObjectId && nextLayoutRecords.some((record) => record.id === snapshot.selectedObjectId)
+        ? snapshot.selectedObjectId
+        : nextLayoutRecords[0]?.id ?? null;
+    return {
+      ...snapshot,
+      layoutRecords: nextLayoutRecords,
+      selectedObjectId
+    };
+  };
+
+  const removeUploadedAsset = async (
+    assetId: AssetId
+  ): Promise<{ success: boolean; removedObjectCount: number; error?: string }> => {
+    if (historyRestoreInFlight) {
+      return {
+        success: false,
+        removedObjectCount: 0,
+        error: "History restore is in progress."
+      };
+    }
+
+    const definition = assetDefinitions.get(assetId);
+    if (!definition || definition.source.type !== "uploaded") {
+      return {
+        success: false,
+        removedObjectCount: 0,
+        error: "Only uploaded assets can be removed individually."
+      };
+    }
+
+    const affectedObjectIds = state.layoutRecords
+      .filter((record) => record.assetId === assetId)
+      .map((record) => record.id);
+    for (const objectId of affectedObjectIds) {
+      deleteObjectByIdInternal(objectId, { recordHistory: false });
+    }
+
+    try {
+      await deleteUploadedAsset(assetId);
+      await assetLibrary.evictAssets([assetId]);
+      removeAssetDefinition(assetId);
+
+      undoStack = undoStack.map((snapshot) => pruneAssetFromHistorySnapshot(snapshot, assetId));
+      redoStack = redoStack.map((snapshot) => pruneAssetFromHistorySnapshot(snapshot, assetId));
+
+      const removedObjectCount = affectedObjectIds.length;
+      const removedObjectSuffix =
+        removedObjectCount > 0
+          ? ` Removed ${removedObjectCount} placed instance${removedObjectCount === 1 ? "" : "s"}.`
+          : "";
+      state.statusMessage = `Removed uploaded asset ${definition.label}.${removedObjectSuffix}`;
+      notify();
+      return {
+        success: true,
+        removedObjectCount
+      };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Uploaded asset could not be removed.";
+      state.statusMessage = message;
+      notify();
+      return {
+        success: false,
+        removedObjectCount: 0,
+        error: message
+      };
+    }
+  };
+
   scene.onPointerObservable.add((pointerInfo) => {
     const pointerEvent = pointerInfo.event as PointerEvent | undefined;
 
@@ -1242,6 +1325,12 @@ export async function createSceneBuilder({
       cameraNavigationEnabled: boolean;
       gizmoDragging: boolean;
       gizmoHovering: boolean;
+      selectedMaterialStates: Array<{
+        materialDisposed: boolean;
+        materialName: string | null;
+        textureDisposed: boolean;
+        texturePresent: boolean;
+      }>;
       selectedMeshBoundingBoxes: boolean[];
       selectedObjectId: string | null;
       transformMode: BuilderTransformMode;
@@ -1274,6 +1363,28 @@ export async function createSceneBuilder({
       },
       getState: () => {
         const selectedEntry = state.selectedObjectId ? placedObjects.get(state.selectedObjectId) : null;
+        const selectedMaterialStates = selectedEntry
+          ? selectedEntry.meshes.map((mesh) => {
+              const meshMaterial = mesh.material as {
+                getClassName?: () => string;
+                isDisposed?: () => boolean;
+                name?: string;
+                diffuseTexture?: { isDisposed?: () => boolean } | null;
+                albedoTexture?: { isDisposed?: () => boolean } | null;
+                baseTexture?: { isDisposed?: () => boolean } | null;
+              } | null;
+              const diffuseTexture = meshMaterial?.diffuseTexture ?? null;
+              const albedoTexture = meshMaterial?.albedoTexture ?? null;
+              const baseTexture = meshMaterial?.baseTexture ?? null;
+              const resolvedTexture = albedoTexture ?? diffuseTexture ?? baseTexture;
+              return {
+                materialDisposed: Boolean(meshMaterial?.isDisposed?.()),
+                materialName: meshMaterial?.name ?? null,
+                textureDisposed: Boolean(resolvedTexture?.isDisposed?.()),
+                texturePresent: Boolean(resolvedTexture)
+              };
+            })
+          : [];
         return {
           attachedNodeName: gizmoManager.attachedNode?.name ?? null,
           attachedNodeMatchesSelectionRoot: Boolean(
@@ -1282,6 +1393,7 @@ export async function createSceneBuilder({
           cameraNavigationEnabled: developmentCamera.isNavigationEnabled(),
           gizmoDragging: gizmoManager.isDragging,
           gizmoHovering: gizmoManager.isHovered,
+          selectedMaterialStates,
           selectedMeshBoundingBoxes: selectedEntry?.meshes.map((mesh) => mesh.showBoundingBox) ?? [],
           selectedObjectId: state.selectedObjectId,
           transformMode
@@ -1339,6 +1451,7 @@ export async function createSceneBuilder({
     uploadAssets,
     uploadAsset,
     renameUploadedAssetCategory,
+    removeUploadedAsset,
     updateSelectedTransform
   };
 }

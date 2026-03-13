@@ -604,6 +604,10 @@
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+.builder-action-row-upload-tools {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
 .builder-status {
   margin-top: var(--space-4);
   font-size: var(--font-size-13);
@@ -833,6 +837,7 @@
 
   .builder-field-grid,
   .builder-action-row-split,
+  .builder-action-row-upload-tools,
   .builder-panel-tabs,
   .builder-control-grid-move {
     grid-template-columns: 1fr;
