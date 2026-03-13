@@ -84,6 +84,83 @@ async function seedSingleWorld(
   );
 }
 
+async function seedSingleWorldWithMetadataRoute(
+  page: Page,
+  worldId: string,
+  name: string,
+  routeId: string
+): Promise<void> {
+  await page.addInitScript(
+    ({ storageKey, seededWorldId, seededWorldName, metadataRouteId }) => {
+      const now = new Date().toISOString();
+      const layout = JSON.stringify(
+        {
+          version: 1,
+          objects: [
+            {
+              id: "tree-hero",
+              assetId: "tree",
+              position: { x: 0.8, y: 0, z: 1.2 },
+              rotationY: 15,
+              scale: 1.4
+            }
+          ],
+          metadata: {
+            cameraRoutes: {
+              defaultRouteId: metadataRouteId,
+              routes: [
+                {
+                  id: metadataRouteId,
+                  name: "Metadata World Route",
+                  loop: false,
+                  timing: {
+                    mode: "duration",
+                    totalDurationMs: 2600
+                  },
+                  easing: "easeInOutSine",
+                  points: [
+                    {
+                      position: [20, 12, -18],
+                      lookAt: [0, 2, 0],
+                      dwellMs: 300
+                    },
+                    {
+                      position: [8, 10, -12],
+                      lookAt: [1, 1.5, 1]
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        null,
+        2
+      );
+
+      localStorage.setItem(
+        storageKey,
+        JSON.stringify([
+          {
+            id: seededWorldId,
+            name: seededWorldName,
+            layout,
+            objectCount: 1,
+            createdAt: now,
+            updatedAt: now
+          }
+        ])
+      );
+    },
+    {
+      storageKey: SAVED_WORLDS_KEY,
+      seededWorldId: worldId,
+      seededWorldName: name,
+      metadataRouteId: routeId
+    }
+  );
+}
+
 test("autoplays cinematic for Eka presentation world and completes once", async ({ page, baseURL }) => {
   const pageErrors = attachBrowserDebugListeners(page);
   const cinematicEvents = captureCinematicEvents(page);
@@ -170,7 +247,7 @@ test("cancels cinematic on user interaction and keeps viewer responsive", async 
   expect(pageErrors, "No uncaught browser page errors should occur during cinematic cancel flow.").toHaveLength(0);
 });
 
-test("does not autoplay cinematic for non-target worlds", async ({ page, baseURL }) => {
+test("autoplays default cinematic for non-target worlds", async ({ page, baseURL }) => {
   const pageErrors = attachBrowserDebugListeners(page);
   const cinematicEvents = captureCinematicEvents(page);
   const nonTargetWorldId = "viewer-cinematic-non-target";
@@ -185,8 +262,52 @@ test("does not autoplay cinematic for non-target worlds", async ({ page, baseURL
   );
 
   await expect(page.locator("#viewer-panel")).toHaveAttribute("data-viewer-load-state", "ready");
-  await page.waitForTimeout(2_000);
-  expect(cinematicEvents.some((event) => event.includes("viewer-cinematic:start"))).toBe(false);
+  await expect.poll(
+    () =>
+      cinematicEvents.find(
+        (event) => event.includes("viewer-cinematic:start") && event.includes("preset: default")
+      ),
+    {
+      timeout: 12_000
+    }
+  ).toBeTruthy();
 
   expect(pageErrors, "No uncaught browser page errors should occur for non-target world viewer.").toHaveLength(0);
+});
+
+test("uses world metadata route before profile fallback", async ({ page, baseURL }) => {
+  const pageErrors = attachBrowserDebugListeners(page);
+  const cinematicEvents = captureCinematicEvents(page);
+  const worldId = "viewer-cinematic-metadata-priority";
+  const metadataRouteId = "viewer-metadata-priority-route";
+
+  await seedSingleWorldWithMetadataRoute(page, worldId, "Metadata Route World", metadataRouteId);
+
+  await page.goto(
+    `${baseURL}/?renderer=webgl&appMode=viewer&worldId=${worldId}&debugBrowserLogs=1`,
+    {
+      waitUntil: "domcontentloaded"
+    }
+  );
+
+  await expect(page.locator("#viewer-panel")).toHaveAttribute("data-viewer-load-state", "ready");
+  await expect.poll(
+    () =>
+      cinematicEvents.find(
+        (event) =>
+          event.includes("viewer-cinematic:start") &&
+          event.includes("source: world-metadata") &&
+          event.includes(`routeId: ${metadataRouteId}`)
+      ),
+    {
+      timeout: 12_000
+    }
+  ).toBeTruthy();
+
+  expect(
+    cinematicEvents.some(
+      (event) => event.includes("viewer-cinematic:start") && event.includes("source: profile")
+    )
+  ).toBe(false);
+  expect(pageErrors, "No uncaught browser page errors should occur for metadata-priority viewer route.").toHaveLength(0);
 });

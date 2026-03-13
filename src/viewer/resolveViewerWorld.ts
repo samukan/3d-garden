@@ -26,6 +26,7 @@ function resolveSavedWorld(worldId: string): ViewerWorldResolution {
     sourceId: savedWorld.id,
     name: savedWorld.name,
     layoutRecords: parsed.value.objects,
+    cameraRoutes: parsed.value.metadata?.cameraRoutes,
     objectCount: parsed.value.objects.length,
     updatedAt: savedWorld.updatedAt,
     editableWorldId: savedWorld.id
@@ -59,6 +60,7 @@ function resolveDraftWorld(worldJsonId: string): ViewerWorldResolution {
     sourceId: draft.id,
     name: draft.name,
     layoutRecords: parsed.value.objects,
+    cameraRoutes: parsed.value.metadata?.cameraRoutes,
     objectCount: parsed.value.objects.length,
     updatedAt: draft.updatedAt,
     editableWorldId: null

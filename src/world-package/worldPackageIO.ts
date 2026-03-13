@@ -1,7 +1,8 @@
 import { strFromU8, strToU8, unzipSync, zipSync } from "fflate";
 import { z } from "zod";
 
-import type { BuilderLayoutRecord } from "../builder/builderTypes";
+import { cloneBuilderWorldMetadata } from "../builder/sceneLayoutSerializer";
+import type { BuilderLayoutRecord, BuilderWorldMetadata } from "../builder/builderTypes";
 import { getBuiltInAssetDefinitions } from "../generation/natureKitAssetManifest";
 import {
   createUploadedAssetId,
@@ -29,9 +30,51 @@ const builderLayoutRecordSchema = z.object({
   scale: z.number().positive()
 });
 
+const cameraRoutePointVectorSchema = z.tuple([
+  z.number().finite(),
+  z.number().finite(),
+  z.number().finite()
+]);
+
+const cameraRoutePointSchema = z.object({
+  position: cameraRoutePointVectorSchema,
+  lookAt: cameraRoutePointVectorSchema,
+  dwellMs: z.number().finite().nonnegative().optional()
+});
+
+const cameraRouteTimingSchema = z.discriminatedUnion("mode", [
+  z.object({
+    mode: z.literal("duration"),
+    totalDurationMs: z.number().finite().nonnegative()
+  }),
+  z.object({
+    mode: z.literal("speed"),
+    unitsPerSecond: z.number().finite().positive()
+  })
+]);
+
+const cameraRouteSchema = z.object({
+  id: z.string().min(1),
+  name: z.string().min(1),
+  loop: z.boolean(),
+  timing: cameraRouteTimingSchema,
+  easing: z.enum(["linear", "easeInOutSine"]).optional(),
+  points: z.array(cameraRoutePointSchema)
+});
+
+const worldCameraRoutesMetadataSchema = z.object({
+  defaultRouteId: z.string().min(1).optional(),
+  routes: z.array(cameraRouteSchema)
+});
+
+const worldLayoutMetadataSchema = z.object({
+  cameraRoutes: worldCameraRoutesMetadataSchema.optional()
+});
+
 const versionedLayoutSchema = z.object({
   version: z.literal(1),
-  objects: z.array(builderLayoutRecordSchema)
+  objects: z.array(builderLayoutRecordSchema),
+  metadata: worldLayoutMetadataSchema.optional()
 });
 
 const builtInAssetEntrySchema = z.object({
@@ -99,6 +142,7 @@ export interface CreateWorldPackageInput {
   builtInAssets: WorldPackageBuiltInAssetInput[];
   exportedAt?: string;
   exportedFromAppVersion?: string;
+  layoutMetadata?: BuilderWorldMetadata;
   layoutRecords: BuilderLayoutRecord[];
   uploadedAssets: WorldPackageUploadedAssetInput[];
   worldName: string;
@@ -214,11 +258,13 @@ function validateWorldPackageManifest(document: WorldPackageDocument): void {
   }
 }
 
-function createVersionedLayoutJson(layoutRecords: BuilderLayoutRecord[]): string {
+function createVersionedLayoutJson(layoutRecords: BuilderLayoutRecord[], metadata?: BuilderWorldMetadata): string {
+  const layoutMetadata = cloneBuilderWorldMetadata(metadata);
   return JSON.stringify(
     {
       version: 1,
-      objects: layoutRecords
+      objects: layoutRecords,
+      metadata: layoutMetadata
     },
     null,
     2
@@ -243,6 +289,7 @@ export async function createWorldPackageFile(input: CreateWorldPackageInput): Pr
     ...record,
     position: { ...record.position }
   }));
+  const layoutMetadata = cloneBuilderWorldMetadata(input.layoutMetadata);
   const builtInAssets = Array.from(new Map(input.builtInAssets.map((asset) => [asset.id, asset])).values());
   const uploadedAssets = Array.from(new Map(input.uploadedAssets.map((asset) => [asset.id, asset])).values());
   const assetEntries: WorldPackageDocument["assets"] = [];
@@ -314,7 +361,8 @@ export async function createWorldPackageFile(input: CreateWorldPackageInput): Pr
     },
     layout: {
       version: 1,
-      objects: layoutRecords
+      objects: layoutRecords,
+      metadata: layoutMetadata
     },
     assets: assetEntries
   };
@@ -446,7 +494,7 @@ export async function importWorldPackageFile(file: Blob): Promise<ImportWorldPac
 
   return {
     importedUploadedAssetCount,
-    layoutJson: createVersionedLayoutJson(layoutRecords),
+    layoutJson: createVersionedLayoutJson(layoutRecords, parsed.document.layout.metadata),
     layoutRecords,
     remappedAssetCount,
     reusedUploadedAssetCount,

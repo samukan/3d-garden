@@ -11,7 +11,10 @@ import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder";
 import { Mesh } from "@babylonjs/core/Meshes/mesh";
 import { Scene } from "@babylonjs/core/scene";
 
-import type { BuilderLayoutRecord } from "../builder/builderTypes";
+import type { BuilderLayoutRecord, BuilderWorldCameraRoutesMetadata } from "../builder/builderTypes";
+import {
+  resolveViewerAutoplayRoute
+} from "../camera-routes/cameraRouteRegistry";
 import type { AssetDefinition } from "../generation/natureKitAssetManifest";
 import { createAssetDefinitionMap, loadAssetDefinitions } from "../generation/assetCatalog";
 import { loadNatureKitAssetLibrary } from "../generation/NatureKitAssetLoader";
@@ -22,6 +25,7 @@ import type { ViewerLoadIssue, ViewerWorldBounds } from "../viewer/viewerTypes";
 import {
   createViewerCameraRig,
   type CameraOverviewFrame,
+  type ViewerCinematicConfig,
   type ViewerCameraMode
 } from "./viewerCameraRig";
 
@@ -29,6 +33,7 @@ interface CreateLayoutSceneOptions {
   canvas: HTMLCanvasElement;
   engine: Engine | WebGPUEngine;
   layoutRecords: BuilderLayoutRecord[];
+  worldCameraRoutes?: BuilderWorldCameraRoutesMetadata;
   atmosphereProfile?: ViewerAtmosphereProfile;
   cameraPresentationProfile?: ViewerCameraPresentationProfile;
   enableDevFreeCamera?: boolean;
@@ -191,6 +196,7 @@ export async function createLayoutScene({
   canvas,
   engine,
   layoutRecords,
+  worldCameraRoutes,
   atmosphereProfile = "default",
   cameraPresentationProfile = "default",
   enableDevFreeCamera = false,
@@ -401,10 +407,57 @@ export async function createLayoutScene({
     viewerCameraRig.cancelCinematic("wheel");
   };
 
-    if (cameraPresentationProfile === "ekaShowcase" && worldBounds) {
-    const orbitTarget = new Vector3(worldBounds.center.x, Math.max(0.5, worldBounds.center.y), worldBounds.center.z);
+  const forceViewerRoute = shouldForceViewerRouteForDebug();
+  const resolvedViewerAutoplayRoute = resolveViewerAutoplayRoute({
+    profile: cameraPresentationProfile,
+    worldCameraRoutes
+  });
+  const viewerAutoplayRoute = forceViewerRoute && resolvedViewerAutoplayRoute.source !== "world-metadata"
+    ? {
+        source: "profile-fallback" as const,
+        preset: "microSmallWorld" as const
+      }
+    : resolvedViewerAutoplayRoute;
+  logBrowserDebug("viewer-route:startup-check", {
+    cameraPresentationProfile,
+    routeSource: viewerAutoplayRoute.source,
+    routeId: viewerAutoplayRoute.source === "world-metadata" ? viewerAutoplayRoute.selectedRouteId : null,
+    routePreset: viewerAutoplayRoute.source === "profile-fallback" ? viewerAutoplayRoute.preset : null,
+    forceViewerRoute,
+    hasWorldBounds: Boolean(worldBounds),
+    metadataRouteCount: worldCameraRoutes?.routes.length ?? 0,
+    metadataDefaultRouteId: worldCameraRoutes?.defaultRouteId ?? null,
+    worldBounds: worldBounds
+      ? {
+          center: worldBounds.center,
+          size: worldBounds.size,
+          radius: Number(worldBounds.radius.toFixed(3))
+        }
+      : null
+  });
+
+  const startProfileFallbackCinematic = (preset: ViewerCinematicConfig["preset"], reason: string): boolean => {
+    if (!worldBounds) {
+      logBrowserDebug("viewer-route:startup-skipped", {
+        cameraPresentationProfile,
+        routeSource: "profile-fallback",
+        routePreset: preset,
+        forceViewerRoute,
+        reason: "missing-world-bounds"
+      });
+      return false;
+    }
+
+    const orbitTarget = new Vector3(
+      worldBounds.center.x,
+      Math.max(0.5, worldBounds.center.y),
+      worldBounds.center.z
+    );
     logBrowserDebug("viewer-cinematic:profile-applied", {
       cameraPresentationProfile,
+      viewerRoutePreset: preset,
+      reason,
+      forceViewerRoute,
       heroCandidateCount: heroFocusCandidates.length,
       orbitTarget: {
         x: Number(orbitTarget.x.toFixed(2)),
@@ -413,12 +466,48 @@ export async function createLayoutScene({
       }
     });
     viewerCameraRig.startCinematic({
-      preset: "microSmallWorld",
+      preset,
       heroTarget: orbitTarget,
       heroHeight: Math.max(1, worldBounds.size.y),
       revealDurationMs: 4200,
       settleDurationMs: 0,
       holdDurationMs: 0
+    });
+    return true;
+  };
+
+  if (viewerAutoplayRoute.source === "world-metadata") {
+    const didStartMetadataRoute = viewerCameraRig.startRoute(viewerAutoplayRoute.route);
+    if (didStartMetadataRoute) {
+      logBrowserDebug("viewer-route:metadata-applied", {
+        cameraPresentationProfile,
+        routeId: viewerAutoplayRoute.selectedRouteId,
+        forceViewerRoute
+      });
+    } else {
+      const profileFallback = resolveViewerAutoplayRoute({
+        profile: cameraPresentationProfile
+      });
+      if (profileFallback.source === "profile-fallback") {
+        startProfileFallbackCinematic(profileFallback.preset, "metadata-route-not-playable");
+      } else {
+        logBrowserDebug("viewer-route:startup-skipped", {
+          cameraPresentationProfile,
+          routeSource: "world-metadata",
+          routeId: viewerAutoplayRoute.selectedRouteId,
+          forceViewerRoute,
+          reason: "metadata-route-not-playable"
+        });
+      }
+    }
+  } else if (viewerAutoplayRoute.source === "profile-fallback") {
+    startProfileFallbackCinematic(viewerAutoplayRoute.preset, "profile-fallback");
+  } else {
+    logBrowserDebug("viewer-route:startup-skipped", {
+      cameraPresentationProfile,
+      routeSource: "none",
+      forceViewerRoute,
+      reason: viewerAutoplayRoute.reason
     });
   }
 
@@ -457,4 +546,12 @@ export async function createLayoutScene({
       emitCameraModeChange();
     }
   };
+}
+
+function shouldForceViewerRouteForDebug(): boolean {
+  if (typeof window === "undefined") {
+    return false;
+  }
+
+  return new URLSearchParams(window.location.search).get("debugViewerRoute") === "1";
 }

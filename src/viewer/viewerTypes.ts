@@ -1,4 +1,8 @@
-import type { BuilderLayoutRecord, BuilderVector3 } from "../builder/builderTypes";
+import type {
+  BuilderLayoutRecord,
+  BuilderVector3,
+  BuilderWorldCameraRoutesMetadata
+} from "../builder/builderTypes";
 
 export type ViewerWorldSource = "saved-world" | "json-file";
 
@@ -24,6 +28,7 @@ export interface ViewerWorldDocument {
   sourceId: string;
   name: string;
   layoutRecords: BuilderLayoutRecord[];
+  cameraRoutes: BuilderWorldCameraRoutesMetadata | undefined;
   objectCount: number;
   updatedAt: string;
   editableWorldId: string | null;

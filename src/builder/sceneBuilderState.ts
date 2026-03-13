@@ -1,9 +1,10 @@
-import type { BuilderLayoutRecord } from "./builderTypes";
+import type { BuilderLayoutRecord, BuilderWorldMetadata } from "./builderTypes";
 
 export interface BuilderSceneRuntimeState {
   isReady: boolean;
   selectedObjectId: string | null;
   layoutRecords: BuilderLayoutRecord[];
+  layoutMetadata: BuilderWorldMetadata | undefined;
   statusMessage: string;
 }
 
@@ -12,6 +13,7 @@ export function createBuilderSceneState(): BuilderSceneRuntimeState {
     isReady: false,
     selectedObjectId: null,
     layoutRecords: [],
+    layoutMetadata: undefined,
     statusMessage: "Loading builder assets..."
   };
 }

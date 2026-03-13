@@ -1,4 +1,5 @@
 import type { AssetId } from "../generation/natureKitAssetManifest";
+import type { CameraRouteDefinition } from "../camera-routes/cameraRouteTypes";
 
 export interface BuilderVector3 {
   x: number;
@@ -40,7 +41,18 @@ export interface BuilderSceneSnapshot {
 }
 
 export interface BuilderLayoutDocument {
+  version?: 1;
   objects: BuilderLayoutRecord[];
+  metadata?: BuilderWorldMetadata;
+}
+
+export interface BuilderWorldCameraRoutesMetadata {
+  defaultRouteId?: string;
+  routes: CameraRouteDefinition[];
+}
+
+export interface BuilderWorldMetadata {
+  cameraRoutes?: BuilderWorldCameraRoutesMetadata;
 }
 
 export interface SavedWorldSummary {

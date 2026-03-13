@@ -31,14 +31,19 @@ import { isBrowserDebugEnabled, logBrowserDebug } from "../utils/browserDebug";
 import { enableMeshVertexColors } from "../utils/meshColors";
 import { createWorldPackageFile, importWorldPackageFile } from "../world-package/worldPackageIO";
 import { getBuilderPalette } from "./builderPalette";
-import { parseBuilderLayoutDocument, serializeBuilderLayout } from "./sceneLayoutSerializer";
+import {
+  cloneBuilderWorldMetadata,
+  parseBuilderLayoutDocument,
+  serializeBuilderLayout
+} from "./sceneLayoutSerializer";
 import { createBuilderSceneState } from "./sceneBuilderState";
 import type {
   BuilderLayoutRecord,
   BuilderPaletteItem,
   BuilderSceneSnapshot,
   BuilderSelectedObjectSnapshot,
-  BuilderVector3
+  BuilderVector3,
+  BuilderWorldMetadata
 } from "./builderTypes";
 import { createSelectionController } from "./selectionController";
 
@@ -123,6 +128,7 @@ interface PlacedObjectEntry {
 
 interface BuilderHistorySnapshot {
   layoutRecords: BuilderLayoutRecord[];
+  layoutMetadata: BuilderWorldMetadata | undefined;
   nextObjectNumber: number;
   selectedObjectId: string | null;
 }
@@ -285,6 +291,7 @@ export async function createSceneBuilder({
 
   const captureHistorySnapshot = (): BuilderHistorySnapshot => ({
     layoutRecords: state.layoutRecords.map(cloneLayoutRecord),
+    layoutMetadata: cloneBuilderWorldMetadata(state.layoutMetadata),
     nextObjectNumber,
     selectedObjectId: state.selectedObjectId
   });
@@ -649,6 +656,7 @@ export async function createSceneBuilder({
     options?: { statusMessage?: string }
   ): Promise<boolean> => {
     clearAllObjects();
+    state.layoutMetadata = cloneBuilderWorldMetadata(snapshot.layoutMetadata);
 
     let skippedCount = 0;
     let firstObjectId: string | null = null;
@@ -682,6 +690,7 @@ export async function createSceneBuilder({
     try {
       const removedIds = await clearUploadedAssets();
       clearAllObjects();
+      state.layoutMetadata = undefined;
       nextObjectNumber = 1;
       clearHistory();
 
@@ -953,7 +962,10 @@ export async function createSceneBuilder({
     setSelection(duplicateRecord.id);
   };
 
-  const exportLayout = (): string => serializeBuilderLayout(state.layoutRecords.map(cloneLayoutRecord));
+  const exportLayout = (): string => serializeBuilderLayout(
+    state.layoutRecords.map(cloneLayoutRecord),
+    state.layoutMetadata
+  );
 
   const exportWorldPackage = async (
     worldName: string
@@ -1015,6 +1027,7 @@ export async function createSceneBuilder({
     return createWorldPackageFile({
       builtInAssets,
       exportedFromAppVersion: import.meta.env.VITE_APP_VERSION ?? "0.1.0",
+      layoutMetadata: state.layoutMetadata,
       layoutRecords,
       uploadedAssets,
       worldName
@@ -1045,6 +1058,7 @@ export async function createSceneBuilder({
 
     const beforeSnapshot = options?.recordHistory === false ? null : captureHistorySnapshot();
     clearAllObjects();
+    state.layoutMetadata = cloneBuilderWorldMetadata(result.value.metadata);
 
     let importedCount = 0;
     let skippedCount = 0;

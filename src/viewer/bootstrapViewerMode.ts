@@ -6,7 +6,7 @@ import type { AppRoute } from "../appMode";
 import { buildAppHref } from "../appMode";
 import { createLayoutScene } from "../engine/createLayoutScene";
 import { createViewerPanel, type ViewerPanelState } from "../ui/viewerPanel";
-import { isBrowserDebugEnabled } from "../utils/browserDebug";
+import { isBrowserDebugEnabled, logBrowserDebug } from "../utils/browserDebug";
 import { resolveViewerWorld } from "./resolveViewerWorld";
 import type { ViewerLoadState } from "./viewerTypes";
 
@@ -165,6 +165,15 @@ export async function bootstrapViewerMode(options: BootstrapViewerModeOptions): 
     world.source === "saved-world" && world.sourceId === EKA_PRESENTATION_WORLD_ID;
   const atmosphereProfile = isEkaPresentationWorld ? "ekaPresentation" : "default";
   const cameraPresentationProfile = isEkaPresentationWorld ? "ekaShowcase" : "default";
+  logBrowserDebug("viewer-profile:resolved", {
+    worldId: world.sourceId,
+    worldName: world.name,
+    worldSource: world.source,
+    isEkaPresentationWorld,
+    atmosphereProfile,
+    cameraPresentationProfile,
+    objectCount: world.objectCount
+  });
 
   appTitle.textContent = world.name;
   appCopy.textContent = "Read-only world presentation mode.";
@@ -196,6 +205,7 @@ export async function bootstrapViewerMode(options: BootstrapViewerModeOptions): 
       canvas,
       engine,
       layoutRecords: world.layoutRecords,
+      worldCameraRoutes: world.cameraRoutes,
       atmosphereProfile,
       cameraPresentationProfile,
       enableDevFreeCamera: devFreeCameraEnabled,
@@ -295,6 +305,7 @@ export async function bootstrapViewerMode(options: BootstrapViewerModeOptions): 
       canvas,
       engine,
       layoutRecords: [],
+      worldCameraRoutes: world.cameraRoutes,
       atmosphereProfile,
       cameraPresentationProfile,
       enableDevFreeCamera: devFreeCameraEnabled

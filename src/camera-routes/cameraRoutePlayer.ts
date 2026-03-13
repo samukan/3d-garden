@@ -32,6 +32,7 @@ type PlaybackPhase = "dwell" | "move";
 export interface CreateCameraRoutePlayerOptions {
   scene: Scene;
   camera: ArcRotateCamera;
+  onRouteComplete?: () => void;
 }
 
 export interface CameraRoutePlayerController {
@@ -114,7 +115,8 @@ function compileRoute(route: CameraRouteDefinition): CameraRouteCompiledState | 
 
 export function createCameraRoutePlayer({
   scene,
-  camera
+  camera,
+  onRouteComplete
 }: CreateCameraRoutePlayerOptions): CameraRoutePlayerController {
   let compiledRoute: CameraRouteCompiledState | null = null;
   let renderObserver: (() => void) | null = null;
@@ -195,6 +197,7 @@ export function createCameraRoutePlayer({
 
       completed = true;
       pauseInternal();
+      onRouteComplete?.();
       return;
     }
 

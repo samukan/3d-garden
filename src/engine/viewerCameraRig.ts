@@ -3,6 +3,9 @@ import { FreeCamera } from "@babylonjs/core/Cameras/freeCamera";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import type { Scene } from "@babylonjs/core/scene";
 
+import { createCameraRoutePlayer } from "../camera-routes/cameraRoutePlayer";
+import type { CameraRouteDefinition } from "../camera-routes/cameraRouteTypes";
+import { resolveViewerCinematicRoute } from "../camera-routes/cameraRouteRegistry";
 import { createDevelopmentCamera, type CameraOverviewFrame } from "./developmentCamera";
 import { logBrowserDebug } from "../utils/browserDebug";
 
@@ -25,15 +28,12 @@ interface ArcRotateSnapshot {
 }
 
 interface CinematicPlayback {
+  source: "profile" | "world-metadata";
   preset: "default" | "microSmallWorld";
-  angleInterpolation: "shortest" | "absolute";
-  startedAtMs: number;
+  routeId: string;
   revealDurationMs: number;
   settleDurationMs: number;
   holdDurationMs: number;
-  revealEnd: ArcRotateSnapshot;
-  settleEnd: ArcRotateSnapshot;
-  totalDurationMs: number;
 }
 
 export interface CreateViewerCameraRigOptions {
@@ -49,6 +49,7 @@ export interface ViewerCameraRigController {
   setOverviewFrame: (frame: CameraOverviewFrame, applyNow?: boolean) => void;
   resetView: (logToConsole?: boolean) => void;
   startCinematic: (config: ViewerCinematicConfig) => void;
+  startRoute: (route: CameraRouteDefinition) => boolean;
   cancelCinematic: (reason: string) => void;
   isCinematicPlaying: () => boolean;
   dispose: () => void;
@@ -61,11 +62,20 @@ export function createViewerCameraRig(
 ): ViewerCameraRigController {
   const presentationCamera = createDevelopmentCamera(scene, canvas);
   const canUseDevFreeCamera = options?.enableDevFreeCamera === true;
+  let handleRouteComplete: (() => void) | null = null;
+  const routePlayer = createCameraRoutePlayer({
+    scene,
+    camera: presentationCamera.camera,
+    onRouteComplete: () => {
+      handleRouteComplete?.();
+    }
+  });
   let activeMode: ViewerCameraMode = "presentationOrbit";
   let freeCamera: FreeCamera | null = null;
   let storedPresentationState: ArcRotateSnapshot | null = null;
   let cinematicPlayback: CinematicPlayback | null = null;
-  let cinematicObserver: (() => void) | null = null;
+
+  const clamp = (value: number, min: number, max: number): number => Math.min(max, Math.max(min, value));
 
   const capturePresentationState = (): ArcRotateSnapshot => ({
     alpha: presentationCamera.camera.alpha,
@@ -81,60 +91,12 @@ export function createViewerCameraRig(
     presentationCamera.camera.setTarget(state.target.clone());
   };
 
-  const clamp = (value: number, min: number, max: number): number => Math.min(max, Math.max(min, value));
-
-  const easeInOut = (value: number): number => {
-    const clamped = clamp(value, 0, 1);
-    return 0.5 - Math.cos(Math.PI * clamped) * 0.5;
-  };
-
-  const normalizeAngleDelta = (value: number): number => {
-    let normalized = value;
-    while (normalized > Math.PI) {
-      normalized -= Math.PI * 2;
-    }
-    while (normalized < -Math.PI) {
-      normalized += Math.PI * 2;
-    }
-    return normalized;
-  };
-
-  const lerpAngle = (
-    from: number,
-    to: number,
-    t: number,
-    interpolation: "shortest" | "absolute"
-  ): number => {
-    if (interpolation === "absolute") {
-      return lerp(from, to, t);
-    }
-
-    return from + normalizeAngleDelta(to - from) * t;
-  };
-
-  const lerp = (from: number, to: number, t: number): number => from + (to - from) * t;
-
-  const interpolateSnapshot = (
-    from: ArcRotateSnapshot,
-    to: ArcRotateSnapshot,
-    t: number,
-    angleInterpolation: "shortest" | "absolute"
-  ): ArcRotateSnapshot => ({
-    alpha: lerpAngle(from.alpha, to.alpha, t, angleInterpolation),
-    beta: lerp(from.beta, to.beta, t),
-    radius: lerp(from.radius, to.radius, t),
-    target: Vector3.Lerp(from.target, to.target, t)
-  });
-
   const stopCinematic = (reason: string | null): void => {
     if (!cinematicPlayback) {
       return;
     }
 
-    if (cinematicObserver) {
-      scene.unregisterBeforeRender(cinematicObserver);
-      cinematicObserver = null;
-    }
+    routePlayer.stop();
 
     const completedPlayback = cinematicPlayback;
     cinematicPlayback = null;
@@ -144,16 +106,24 @@ export function createViewerCameraRig(
 
     if (reason) {
       logBrowserDebug("viewer-cinematic:cancel", {
-        reason
+        reason,
+        source: completedPlayback.source,
+        preset: completedPlayback.preset,
+        routeId: completedPlayback.routeId
       });
       return;
     }
 
     logBrowserDebug("viewer-cinematic:complete", {
+      source: completedPlayback.source,
       preset: completedPlayback.preset,
+      routeId: completedPlayback.routeId,
       finalBeta: Number(presentationCamera.camera.beta.toFixed(3)),
       finalRadius: Number(presentationCamera.camera.radius.toFixed(3))
     });
+  };
+  handleRouteComplete = () => {
+    stopCinematic(null);
   };
 
   const ensureFreeCamera = (): FreeCamera => {
@@ -240,6 +210,58 @@ export function createViewerCameraRig(
   scene.activeCamera = presentationCamera.camera;
   presentationCamera.setNavigationEnabled(true);
 
+  const startRoutePlayback = (
+    route: CameraRouteDefinition,
+    playback: Omit<CinematicPlayback, "routeId">
+  ): boolean => {
+    stopCinematic("start-replaced");
+    setMode("presentationOrbit");
+
+    if (route.points.length < 2) {
+      logBrowserDebug("viewer-cinematic:start-skipped", {
+        source: playback.source,
+        preset: playback.preset,
+        routeId: route.id,
+        routePointCount: route.points.length,
+        reason: "route-too-short"
+      });
+      return false;
+    }
+
+    cinematicPlayback = {
+      ...playback,
+      routeId: route.id
+    };
+
+    scene.activeCamera = presentationCamera.camera;
+    activeMode = "presentationOrbit";
+    presentationCamera.setNavigationEnabled(false);
+
+    logBrowserDebug("viewer-cinematic:start", {
+      source: playback.source,
+      preset: playback.preset,
+      routeId: route.id,
+      revealDurationMs: playback.revealDurationMs,
+      settleDurationMs: playback.settleDurationMs,
+      holdDurationMs: playback.holdDurationMs
+    });
+    logBrowserDebug("viewer-cinematic:route-resolved", {
+      source: playback.source,
+      preset: playback.preset,
+      routeId: route.id,
+      routePointCount: route.points.length,
+      routeLoop: route.loop
+    });
+
+    routePlayer.setRoute(route);
+    routePlayer.play({ restart: true });
+    logBrowserDebug("viewer-cinematic:play-called", {
+      source: playback.source,
+      routeId: route.id
+    });
+    return routePlayer.isPlaying();
+  };
+
   return {
     camera: presentationCamera.camera,
     getMode: () => activeMode,
@@ -254,9 +276,6 @@ export function createViewerCameraRig(
     },
     resetView,
     startCinematic: (config) => {
-      stopCinematic("start-replaced");
-      setMode("presentationOrbit");
-
       const preset = config.preset ?? "default";
       const angleInterpolation = preset === "microSmallWorld" ? "absolute" : "shortest";
       const startFrame = capturePresentationState();
@@ -312,74 +331,44 @@ export function createViewerCameraRig(
         target: heroTarget
       };
 
-      const totalDurationMs = revealDurationMs + settleDurationMs + holdDurationMs;
-      cinematicPlayback = {
+      const cinematicRoute = resolveViewerCinematicRoute({
         preset,
-        angleInterpolation,
-        startedAtMs: performance.now(),
-        revealDurationMs,
-        settleDurationMs,
-        holdDurationMs,
+        startFrame,
         revealEnd,
         settleEnd,
-        totalDurationMs
-      };
-
-      scene.activeCamera = presentationCamera.camera;
-      activeMode = "presentationOrbit";
-      presentationCamera.setNavigationEnabled(false);
-
-      logBrowserDebug("viewer-cinematic:start", {
-        preset,
         revealDurationMs,
         settleDurationMs,
         holdDurationMs,
-        heroHeight: Number(heroHeight.toFixed(2))
+        angleInterpolation
       });
 
-      cinematicObserver = () => {
-        if (!cinematicPlayback) {
-          return;
-        }
-
-        const elapsedMs = performance.now() - cinematicPlayback.startedAtMs;
-        if (elapsedMs < cinematicPlayback.revealDurationMs) {
-          const eased = easeInOut(elapsedMs / cinematicPlayback.revealDurationMs);
-          applyPresentationState(
-            interpolateSnapshot(startFrame, cinematicPlayback.revealEnd, eased, cinematicPlayback.angleInterpolation)
-          );
-          return;
-        }
-
-        if (elapsedMs < cinematicPlayback.revealDurationMs + cinematicPlayback.settleDurationMs) {
-          const settleElapsed = elapsedMs - cinematicPlayback.revealDurationMs;
-          const eased = easeInOut(settleElapsed / cinematicPlayback.settleDurationMs);
-          applyPresentationState(
-            interpolateSnapshot(
-              cinematicPlayback.revealEnd,
-              cinematicPlayback.settleEnd,
-              eased,
-              cinematicPlayback.angleInterpolation
-            )
-          );
-          return;
-        }
-
-        if (elapsedMs < cinematicPlayback.totalDurationMs) {
-          applyPresentationState(cinematicPlayback.settleEnd);
-          return;
-        }
-
-        applyPresentationState(cinematicPlayback.settleEnd);
-        stopCinematic(null);
-      };
-
-      scene.registerBeforeRender(cinematicObserver);
+      const didStart = startRoutePlayback(cinematicRoute, {
+        source: "profile",
+        preset,
+        revealDurationMs,
+        settleDurationMs,
+        holdDurationMs
+      });
+      if (didStart) {
+        logBrowserDebug("viewer-cinematic:profile-config", {
+          preset,
+          heroHeight: Number(heroHeight.toFixed(2))
+        });
+      }
+    },
+    startRoute: (route) => {
+      return startRoutePlayback(route, {
+        source: "world-metadata",
+        preset: "default",
+        revealDurationMs: 0,
+        settleDurationMs: 0,
+        holdDurationMs: 0
+      });
     },
     cancelCinematic: (reason) => {
       stopCinematic(reason);
     },
-    isCinematicPlaying: () => cinematicPlayback !== null,
+    isCinematicPlaying: () => cinematicPlayback !== null && routePlayer.isPlaying(),
     dispose: () => {
       stopCinematic("dispose");
       if (freeCamera) {
@@ -387,6 +376,7 @@ export function createViewerCameraRig(
         freeCamera.dispose();
         freeCamera = null;
       }
+      routePlayer.dispose();
       presentationCamera.dispose();
     }
   };

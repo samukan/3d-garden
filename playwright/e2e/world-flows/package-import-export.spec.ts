@@ -1,8 +1,8 @@
 import path from "node:path";
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 
 import { expect, test, type Browser } from "@playwright/test";
-import { strFromU8, unzipSync } from "fflate";
+import { strFromU8, strToU8, unzipSync, zipSync } from "fflate";
 
 import { attachBrowserDebugListeners } from "../../browserDebugTestUtils";
 
@@ -90,6 +90,61 @@ function readUploadedAssetIdFromPackage(packagePath: string): string {
   return uploaded.id;
 }
 
+function injectCameraRouteMetadataIntoPackage(inputPath: string, outputPath: string): void {
+  const entries = unzipSync(new Uint8Array(readFileSync(inputPath)));
+  const worldJson = entries["world.json"];
+  if (!worldJson) {
+    throw new Error("world.json was not found in package.");
+  }
+
+  const parsed = JSON.parse(strFromU8(worldJson)) as {
+    layout?: {
+      version?: number;
+      objects?: unknown[];
+      metadata?: Record<string, unknown>;
+    };
+  };
+
+  parsed.layout = parsed.layout ?? {
+    version: 1,
+    objects: []
+  };
+
+  parsed.layout.metadata = {
+    ...(parsed.layout.metadata ?? {}),
+    cameraRoutes: {
+      defaultRouteId: "portable-package-route",
+      routes: [
+        {
+          id: "portable-package-route",
+          name: "Portable Package Route",
+          loop: false,
+          timing: {
+            mode: "duration",
+            totalDurationMs: 3800
+          },
+          easing: "easeInOutSine",
+          points: [
+            {
+              position: [18, 11, -14],
+              lookAt: [0, 2, 0],
+              dwellMs: 250
+            },
+            {
+              position: [8, 9, -9],
+              lookAt: [1.2, 1.7, 1.1]
+            }
+          ]
+        }
+      ]
+    }
+  };
+
+  entries["world.json"] = strToU8(JSON.stringify(parsed, null, 2));
+  const zipped = zipSync(entries, { level: 6 });
+  writeFileSync(outputPath, Buffer.from(zipped));
+}
+
 test("imports world package with uploaded assets into a fresh builder session", async ({
   browser,
   baseURL
@@ -144,6 +199,55 @@ test("opens world package directly from menu into viewer mode", async ({ browser
 
   expect(pageErrors, "No browser errors should occur while opening world package from menu.").toHaveLength(0);
   await viewerContext.close();
+});
+
+test("preserves layout.metadata.cameraRoutes when importing and re-exporting package", async ({
+  browser,
+  baseURL
+}, testInfo) => {
+  const basePackagePath = testInfo.outputPath("metadata-base-world.sgw");
+  const metadataPackagePath = testInfo.outputPath("metadata-routes-world.sgw");
+  await createWorldPackage(browser, baseURL, basePackagePath);
+  injectCameraRouteMetadataIntoPackage(basePackagePath, metadataPackagePath);
+
+  const importContext = await browser.newContext();
+  const importPage = await importContext.newPage();
+  const importErrors = attachBrowserDebugListeners(importPage);
+
+  await importPage.goto(`${baseURL}/?renderer=webgl&appMode=builder&debugBrowserLogs=1`, {
+    waitUntil: "domcontentloaded"
+  });
+  await expect(importPage.locator("#builder-status")).toContainText("Builder ready", {
+    timeout: 20_000
+  });
+
+  await importPage.locator("#builder-advanced-tools-toggle").click();
+  await expect(importPage.locator("#builder-advanced-tools-panel")).toBeVisible();
+  await importPage.locator("#builder-upload-world-package-input").setInputFiles(metadataPackagePath);
+  await expect(importPage.locator("#builder-status")).toContainText("Imported world package", {
+    timeout: 20_000
+  });
+
+  await importPage.locator("#builder-export").click();
+  const exportedLayout = await importPage.locator("#builder-layout-json").inputValue();
+  const parsedExport = JSON.parse(exportedLayout) as {
+    metadata?: {
+      cameraRoutes?: {
+        defaultRouteId?: string;
+        routes?: Array<{ id?: string; points?: unknown[] }>;
+      };
+    };
+  };
+
+  expect(parsedExport.metadata?.cameraRoutes?.defaultRouteId).toBe("portable-package-route");
+  expect(parsedExport.metadata?.cameraRoutes?.routes?.[0]?.id).toBe("portable-package-route");
+  expect(parsedExport.metadata?.cameraRoutes?.routes?.[0]?.points?.length ?? 0).toBeGreaterThanOrEqual(2);
+
+  expect(
+    importErrors,
+    "No browser errors should occur while preserving package metadata camera routes through builder import/export."
+  ).toHaveLength(0);
+  await importContext.close();
 });
 
 test("remaps uploaded asset ids when package collides with existing local upload id", async ({
