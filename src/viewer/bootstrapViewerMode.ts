@@ -9,6 +9,8 @@ import { createViewerPanel } from "../ui/viewerPanel";
 import { resolveViewerWorld } from "./resolveViewerWorld";
 import type { ViewerLoadState } from "./viewerTypes";
 
+const EKA_PRESENTATION_WORLD_ID = "16882855-0952-4e80-ae7d-5ff8ccc7f6f2";
+
 interface ViewerModeElements {
   appEyebrow: HTMLElement;
   appTitle: HTMLElement;
@@ -126,6 +128,11 @@ export async function bootstrapViewerMode(options: BootstrapViewerModeOptions): 
   }
 
   const world = worldResolution.world;
+  const atmosphereProfile =
+    world.source === "saved-world" && world.sourceId === EKA_PRESENTATION_WORLD_ID
+      ? "ekaPresentation"
+      : "default";
+
   appTitle.textContent = world.name;
   appCopy.textContent = "Read-only world presentation mode.";
 
@@ -154,6 +161,7 @@ export async function bootstrapViewerMode(options: BootstrapViewerModeOptions): 
       canvas,
       engine,
       layoutRecords: world.layoutRecords,
+      atmosphereProfile,
       onProgress: ({ loadedObjectCount, skippedObjectCount }) => {
         viewerPanel.setState({
           loadState: "loading",
@@ -233,7 +241,8 @@ export async function bootstrapViewerMode(options: BootstrapViewerModeOptions): 
     const fallbackScene = await createLayoutScene({
       canvas,
       engine,
-      layoutRecords: []
+      layoutRecords: [],
+      atmosphereProfile
     });
     resetView = fallbackScene.resetView;
 

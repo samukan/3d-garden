@@ -2,6 +2,8 @@ import { Engine } from "@babylonjs/core/Engines/engine";
 import { WebGPUEngine } from "@babylonjs/core/Engines/webgpuEngine";
 import { DirectionalLight } from "@babylonjs/core/Lights/directionalLight";
 import { HemisphericLight } from "@babylonjs/core/Lights/hemisphericLight";
+import type { Material } from "@babylonjs/core/Materials/material";
+import { MultiMaterial } from "@babylonjs/core/Materials/multiMaterial";
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import { Color3, Color4 } from "@babylonjs/core/Maths/math.color";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
@@ -22,6 +24,7 @@ interface CreateLayoutSceneOptions {
   canvas: HTMLCanvasElement;
   engine: Engine | WebGPUEngine;
   layoutRecords: BuilderLayoutRecord[];
+  atmosphereProfile?: ViewerAtmosphereProfile;
   onProgress?: (progress: {
     totalObjectCount: number;
     processedObjectCount: number;
@@ -38,6 +41,106 @@ export interface LayoutSceneController {
   loadIssues: ViewerLoadIssue[];
   worldBounds: ViewerWorldBounds | null;
   resetView: () => void;
+}
+
+export type ViewerAtmosphereProfile = "default" | "ekaPresentation";
+
+interface MaterialTintProfile {
+  key: "grass" | "cliff" | "path";
+  diffuseMultiplier: Color3;
+}
+
+type TintableMaterial = Material & {
+  diffuseColor?: Color3;
+  albedoColor?: Color3;
+  emissiveColor?: Color3;
+};
+
+const GRASS_TINT_PROFILE: MaterialTintProfile = {
+  key: "grass",
+  diffuseMultiplier: new Color3(0.92, 1.03, 0.9)
+};
+
+const CLIFF_TINT_PROFILE: MaterialTintProfile = {
+  key: "cliff",
+  diffuseMultiplier: new Color3(0.86, 0.8, 0.72)
+};
+
+const PATH_TINT_PROFILE: MaterialTintProfile = {
+  key: "path",
+  diffuseMultiplier: new Color3(1.04, 0.97, 0.86)
+};
+
+function resolveTintProfile(assetId: string): MaterialTintProfile | null {
+  if (assetId === "groundTile") {
+    return GRASS_TINT_PROFILE;
+  }
+
+  if (assetId === "cliffBlock" || assetId === "cliffCorner" || assetId === "cliffSteps") {
+    return CLIFF_TINT_PROFILE;
+  }
+
+  if (assetId === "pathStraight" || assetId === "pathTile" || assetId === "pathEnd") {
+    return PATH_TINT_PROFILE;
+  }
+
+  return null;
+}
+
+function applyTintToMaterial(material: Material, tint: MaterialTintProfile): void {
+  const tintable = material as TintableMaterial;
+  if (tintable.diffuseColor) {
+    tintable.diffuseColor = tintable.diffuseColor.multiply(tint.diffuseMultiplier);
+  }
+
+  if (tintable.albedoColor) {
+    tintable.albedoColor = tintable.albedoColor.multiply(tint.diffuseMultiplier);
+  }
+
+  if (tintable.emissiveColor) {
+    tintable.emissiveColor = tintable.emissiveColor.scale(0.85);
+  }
+}
+
+function getTintedMaterial(
+  baseMaterial: Material,
+  tint: MaterialTintProfile,
+  cache: Map<string, Material>
+): Material {
+  const cacheKey = `${baseMaterial.uniqueId}:${tint.key}`;
+  const cachedMaterial = cache.get(cacheKey);
+  if (cachedMaterial) {
+    return cachedMaterial;
+  }
+
+  let tintedMaterial: Material | null = null;
+
+  if (baseMaterial instanceof MultiMaterial) {
+    const clonedMulti = baseMaterial.clone(`${baseMaterial.name}-${tint.key}`);
+    if (clonedMulti) {
+      clonedMulti.subMaterials = (baseMaterial.subMaterials ?? []).map((subMaterial) => {
+        if (!subMaterial) {
+          return null;
+        }
+
+        return getTintedMaterial(subMaterial, tint, cache);
+      });
+      tintedMaterial = clonedMulti;
+    }
+  } else {
+    const clonedMaterial = baseMaterial.clone(`${baseMaterial.name}-${tint.key}`);
+    if (clonedMaterial) {
+      applyTintToMaterial(clonedMaterial, tint);
+      tintedMaterial = clonedMaterial;
+    }
+  }
+
+  if (!tintedMaterial) {
+    return baseMaterial;
+  }
+
+  cache.set(cacheKey, tintedMaterial);
+  return tintedMaterial;
 }
 
 function createWorldBounds(min: Vector3, max: Vector3): ViewerWorldBounds {
@@ -69,27 +172,44 @@ export async function createLayoutScene({
   canvas,
   engine,
   layoutRecords,
+  atmosphereProfile = "default",
   onProgress
 }: CreateLayoutSceneOptions): Promise<LayoutSceneController> {
   const scene = new Scene(engine);
   const developmentCamera = createDevelopmentCamera(scene, canvas);
   scene.activeCamera = developmentCamera.camera;
 
-  scene.clearColor = new Color4(0.79, 0.87, 0.92, 1);
-  scene.ambientColor = new Color3(0.2, 0.24, 0.22);
+  const useEkaPresentation = atmosphereProfile === "ekaPresentation";
+
+  scene.clearColor = useEkaPresentation
+    ? new Color4(0.93, 0.89, 0.83, 1)
+    : new Color4(0.79, 0.87, 0.92, 1);
+  scene.ambientColor = useEkaPresentation
+    ? new Color3(0.25, 0.21, 0.18)
+    : new Color3(0.2, 0.24, 0.22);
   scene.fogMode = Scene.FOGMODE_EXP2;
-  scene.fogDensity = 0.0056;
-  scene.fogColor = new Color3(0.86, 0.91, 0.9);
+  scene.fogDensity = useEkaPresentation ? 0.006 : 0.0056;
+  scene.fogColor = useEkaPresentation
+    ? new Color3(0.9, 0.84, 0.78)
+    : new Color3(0.86, 0.91, 0.9);
 
   const hemiLight = new HemisphericLight("viewer-hemi", new Vector3(0, 1, 0), scene);
-  hemiLight.intensity = 0.95;
-  hemiLight.diffuse = new Color3(0.96, 0.97, 0.92);
-  hemiLight.groundColor = new Color3(0.18, 0.2, 0.18);
+  hemiLight.intensity = useEkaPresentation ? 0.72 : 0.95;
+  hemiLight.diffuse = useEkaPresentation
+    ? new Color3(1, 0.95, 0.86)
+    : new Color3(0.96, 0.97, 0.92);
+  hemiLight.groundColor = useEkaPresentation
+    ? new Color3(0.2, 0.16, 0.12)
+    : new Color3(0.18, 0.2, 0.18);
 
-  const sunLight = new DirectionalLight("viewer-sun", new Vector3(-0.4, -1, 0.28), scene);
-  sunLight.position = new Vector3(28, 36, -18);
-  sunLight.intensity = 0.85;
-  sunLight.diffuse = new Color3(1, 0.96, 0.88);
+  const sunLight = new DirectionalLight(
+    "viewer-sun",
+    useEkaPresentation ? new Vector3(-0.58, -1, 0.22) : new Vector3(-0.4, -1, 0.28),
+    scene
+  );
+  sunLight.position = useEkaPresentation ? new Vector3(34, 40, -10) : new Vector3(28, 36, -18);
+  sunLight.intensity = useEkaPresentation ? 0.98 : 0.85;
+  sunLight.diffuse = useEkaPresentation ? new Color3(1, 0.9, 0.74) : new Color3(1, 0.96, 0.88);
 
   const ground = MeshBuilder.CreateGround(
     "viewer-ground",
@@ -97,8 +217,12 @@ export async function createLayoutScene({
     scene
   );
   const groundMaterial = new StandardMaterial("viewer-ground-material", scene);
-  groundMaterial.diffuseColor = new Color3(0.44, 0.55, 0.4);
-  groundMaterial.emissiveColor = new Color3(0.018, 0.028, 0.018);
+  groundMaterial.diffuseColor = useEkaPresentation
+    ? new Color3(0.43, 0.48, 0.39)
+    : new Color3(0.44, 0.55, 0.4);
+  groundMaterial.emissiveColor = useEkaPresentation
+    ? new Color3(0.014, 0.018, 0.013)
+    : new Color3(0.018, 0.028, 0.018);
   groundMaterial.specularColor = Color3.Black();
   ground.material = groundMaterial;
   ground.receiveShadows = true;
@@ -115,6 +239,7 @@ export async function createLayoutScene({
   let skippedObjectCount = 0;
   const skippedAssetIds: string[] = [];
   const loadIssues: ViewerLoadIssue[] = [];
+  const tintedMaterialCache = new Map<string, Material>();
   let worldMin: Vector3 | null = null;
   let worldMax: Vector3 | null = null;
   const totalObjectCount = layoutRecords.length;
@@ -155,7 +280,11 @@ export async function createLayoutScene({
       );
 
       const meshes = root.getChildMeshes(false).filter((mesh): mesh is Mesh => mesh instanceof Mesh);
+      const tintProfile = useEkaPresentation ? resolveTintProfile(record.assetId) : null;
       for (const mesh of meshes) {
+        if (tintProfile && mesh.material) {
+          mesh.material = getTintedMaterial(mesh.material, tintProfile, tintedMaterialCache);
+        }
         enableMeshVertexColors(mesh, { log: true });
       }
 
