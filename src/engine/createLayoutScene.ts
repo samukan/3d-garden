@@ -401,7 +401,7 @@ export async function createLayoutScene({
     viewerCameraRig.cancelCinematic("wheel");
   };
 
-  if (cameraPresentationProfile === "ekaShowcase" && worldBounds) {
+    if (cameraPresentationProfile === "ekaShowcase" && worldBounds) {
     const orbitTarget = new Vector3(worldBounds.center.x, Math.max(0.5, worldBounds.center.y), worldBounds.center.z);
     logBrowserDebug("viewer-cinematic:profile-applied", {
       cameraPresentationProfile,
