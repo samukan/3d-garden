@@ -17,6 +17,13 @@ npm run build
 npm run preview
 ```
 
+## CI Asset Notes
+
+Most of `public/assets` is intentionally ignored, but a small set of GLB files in
+`public/assets/nature-kit/Models/GLTF format/` is committed for Playwright CI coverage.
+Those files back the built-in Nature Kit manifest (ground/path/cliff/tree/bush/rock/sign)
+plus the uploaded-asset smoke fixture (`tree_tall.glb`).
+
 ## Scripts
 
 - `npm run dev` starts the Vite development server.

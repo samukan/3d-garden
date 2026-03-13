@@ -1,6 +1,27 @@
 node_modules/
 dist/
-public/assets/
+# Keep generated/large asset trees ignored by default.
+public/assets/*
+!public/assets/nature-kit/
+public/assets/nature-kit/*
+!public/assets/nature-kit/Models/
+public/assets/nature-kit/Models/*
+!public/assets/nature-kit/Models/GLTF format/
+public/assets/nature-kit/Models/GLTF format/*
+
+# Minimal CI-required GLBs used by the built-in manifest and upload smoke tests.
+!public/assets/nature-kit/Models/GLTF format/ground_grass.glb
+!public/assets/nature-kit/Models/GLTF format/ground_pathStraight.glb
+!public/assets/nature-kit/Models/GLTF format/ground_pathTile.glb
+!public/assets/nature-kit/Models/GLTF format/ground_pathEnd.glb
+!public/assets/nature-kit/Models/GLTF format/cliff_block_stone.glb
+!public/assets/nature-kit/Models/GLTF format/cliff_corner_stone.glb
+!public/assets/nature-kit/Models/GLTF format/cliff_steps_stone.glb
+!public/assets/nature-kit/Models/GLTF format/tree_oak.glb
+!public/assets/nature-kit/Models/GLTF format/plant_bushDetailed.glb
+!public/assets/nature-kit/Models/GLTF format/rock_smallA.glb
+!public/assets/nature-kit/Models/GLTF format/sign.glb
+!public/assets/nature-kit/Models/GLTF format/tree_tall.glb
 .github/copilot-instructions.md
 
 # Local environment files
