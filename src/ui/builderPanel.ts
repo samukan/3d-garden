@@ -1,6 +1,6 @@
 import type { SceneBuilderController } from "../builder/sceneBuilder";
-import type { BuilderSceneSnapshot } from "../builder/builderTypes";
-import type { AssetId } from "../generation/natureKitAssetManifest";
+import type { BuilderPaletteItem, BuilderSceneSnapshot } from "../builder/builderTypes";
+import { DEFAULT_UPLOADED_ASSET_CATEGORY, type AssetId } from "../generation/natureKitAssetManifest";
 import { escapeHtml } from "../utils/html";
 
 export interface BuilderPanelController {
@@ -72,7 +72,17 @@ const libraryPanelMarkup = `
     <div class="builder-action-row builder-action-row-split">
       <button id="builder-upload-asset" class="ui-button builder-button builder-button-block" type="button">Upload Assets (.glb)</button>
       <button id="builder-clear-uploads" class="ui-button builder-button builder-button-block" type="button">Clear uploads</button>
-      <input id="builder-upload-asset-input" type="file" accept=".glb,model/gltf-binary" hidden />
+      <input id="builder-upload-asset-input" type="file" accept=".glb,model/gltf-binary" multiple hidden />
+    </div>
+    <div class="builder-library-upload-controls">
+      <label class="builder-field builder-library-sort-field" for="builder-upload-sort">
+        <span>Sort uploads</span>
+        <select id="builder-upload-sort" class="builder-select">
+          <option value="alpha">A-Z</option>
+          <option value="date-uploaded">Date uploaded</option>
+        </select>
+      </label>
+      <button id="builder-rename-upload-category" class="ui-button builder-button builder-button-block" type="button">Rename category</button>
     </div>
   </div>
   <div class="builder-panel-tabs" role="tablist" aria-label="Builder library tabs">
@@ -163,9 +173,19 @@ const MOVE_STEP = 0.25;
 const ROTATION_STEP = 15;
 
 type BuilderLibraryTab = "assets" | "scene";
+type UploadedAssetSortMode = "alpha" | "date-uploaded";
 
 function formatNumber(value: number): string {
   return Number(value.toFixed(3)).toString();
+}
+
+function getUploadedAssetTimestamp(value: string | null): number {
+  if (!value) {
+    return 0;
+  }
+
+  const timestamp = Date.parse(value);
+  return Number.isFinite(timestamp) ? timestamp : 0;
 }
 
 function slugifyWorldName(value: string): string {
@@ -192,7 +212,7 @@ function isEditableTarget(target: EventTarget | null): boolean {
     return true;
   }
 
-  const closestEditable = target.closest("input, textarea, [contenteditable='true']");
+  const closestEditable = target.closest("input, textarea, select, [contenteditable='true']");
   return Boolean(closestEditable);
 }
 
@@ -252,6 +272,8 @@ export function createBuilderPanel(
   const uploadAssetInput = libraryPanel.querySelector<HTMLInputElement>("#builder-upload-asset-input");
   const uploadAssetButton = libraryPanel.querySelector<HTMLButtonElement>("#builder-upload-asset");
   const clearUploadsButton = libraryPanel.querySelector<HTMLButtonElement>("#builder-clear-uploads");
+  const uploadSortSelect = libraryPanel.querySelector<HTMLSelectElement>("#builder-upload-sort");
+  const renameCategoryButton = libraryPanel.querySelector<HTMLButtonElement>("#builder-rename-upload-category");
   const cameraNavToggleButton = topBar.querySelector<HTMLButtonElement>("#builder-camera-nav-toggle");
   const advancedToolsToggleButton = topBar.querySelector<HTMLButtonElement>("#builder-advanced-tools-toggle");
   const advancedToolsPanel = topBar.querySelector<HTMLElement>("#builder-advanced-tools-panel");
@@ -291,6 +313,8 @@ export function createBuilderPanel(
     !uploadAssetInput ||
     !uploadAssetButton ||
     !clearUploadsButton ||
+    !uploadSortSelect ||
+    !renameCategoryButton ||
     !cameraNavToggleButton ||
     !advancedToolsToggleButton ||
     !advancedToolsPanel ||
@@ -335,6 +359,7 @@ export function createBuilderPanel(
   let assetRolloutDismissed = false;
   let libraryPanelCollapsed = false;
   let inspectorPanelCollapsed = false;
+  let uploadedAssetSortMode: UploadedAssetSortMode = "alpha";
 
   const transformInputs = [posXInput, posYInput, posZInput, rotYInput, scaleInput];
   const manipulationButtons = [
@@ -403,6 +428,49 @@ export function createBuilderPanel(
     }
   };
 
+  const getSelectedPaletteItem = (snapshot: BuilderSceneSnapshot): BuilderPaletteItem | null => {
+    ensureSelectedAsset(snapshot);
+    if (!selectedAssetId) {
+      return null;
+    }
+
+    return snapshot.palette.find((item) => item.assetId === selectedAssetId) ?? null;
+  };
+
+  const sortUploadedItems = (items: BuilderPaletteItem[]): BuilderPaletteItem[] => {
+    if (uploadedAssetSortMode === "date-uploaded") {
+      return items
+        .slice()
+        .sort(
+          (left, right) =>
+            getUploadedAssetTimestamp(right.uploadedAt) - getUploadedAssetTimestamp(left.uploadedAt) ||
+            left.label.localeCompare(right.label)
+        );
+    }
+
+    return items.slice().sort((left, right) => left.label.localeCompare(right.label));
+  };
+
+  const renderPaletteButtons = (items: BuilderPaletteItem[]): string =>
+    items
+      .map(
+        (item) =>
+          `<button class="builder-palette-item${item.assetId === selectedAssetId ? " is-selected" : ""}" type="button" data-asset-id="${escapeHtml(item.assetId)}" aria-pressed="${item.assetId === selectedAssetId}">
+            ${escapeHtml(item.label)}
+          </button>`
+      )
+      .join("");
+
+  const renderLibraryTools = (snapshot: BuilderSceneSnapshot): void => {
+    const selectedItem = getSelectedPaletteItem(snapshot);
+    const selectedCategory = selectedItem?.sourceType === "uploaded" ? selectedItem.uploadedCategory : null;
+    renameCategoryButton.disabled = !selectedCategory;
+    renameCategoryButton.title = selectedCategory
+      ? `Rename category "${selectedCategory}".`
+      : "Select an uploaded asset to rename its category.";
+    uploadSortSelect.value = uploadedAssetSortMode;
+  };
+
   const setActiveLibraryTab = (tab: BuilderLibraryTab): void => {
     activeLibraryTab = tab;
     assetsTabButton.classList.toggle("is-active", tab === "assets");
@@ -433,7 +501,7 @@ export function createBuilderPanel(
       return;
     }
 
-    const selectedItem = snapshot.palette.find((item) => item.assetId === selectedAssetId);
+    const selectedItem = getSelectedPaletteItem(snapshot);
 
     if (!selectedItem) {
       rolloutContentElement.innerHTML = `
@@ -494,14 +562,60 @@ export function createBuilderPanel(
 
   const renderPalette = (snapshot: BuilderSceneSnapshot): void => {
     ensureSelectedAsset(snapshot);
-    paletteElement.innerHTML = snapshot.palette
-      .map(
-        (item) =>
-          `<button class="builder-palette-item${item.assetId === selectedAssetId ? " is-selected" : ""}" type="button" data-asset-id="${escapeHtml(item.assetId)}" aria-pressed="${item.assetId === selectedAssetId}">
-            ${escapeHtml(item.label)}
-          </button>`
-      )
-      .join("");
+    const builtInItems = snapshot.palette
+      .filter((item) => item.sourceType === "built-in")
+      .sort((left, right) => left.label.localeCompare(right.label));
+    const uploadedItems = sortUploadedItems(snapshot.palette.filter((item) => item.sourceType === "uploaded"));
+    const uploadedByCategory = new Map<string, BuilderPaletteItem[]>();
+
+    for (const item of uploadedItems) {
+      const category = item.uploadedCategory ?? DEFAULT_UPLOADED_ASSET_CATEGORY;
+      const group = uploadedByCategory.get(category) ?? [];
+      group.push(item);
+      uploadedByCategory.set(category, group);
+    }
+
+    const sections: string[] = [];
+
+    if (builtInItems.length > 0) {
+      sections.push(`
+        <div class="builder-palette-group" data-palette-group="built-in">
+          <p class="builder-palette-group-title">Built-in Assets</p>
+          <div class="builder-palette-group-items">
+            ${renderPaletteButtons(builtInItems)}
+          </div>
+        </div>
+      `);
+    }
+
+    if (uploadedByCategory.size > 0) {
+      const categories = Array.from(uploadedByCategory.entries()).sort((left, right) => left[0].localeCompare(right[0]));
+      sections.push(`
+        <div class="builder-palette-group" data-palette-group="uploaded">
+          <p class="builder-palette-group-title">Uploaded Assets</p>
+        </div>
+      `);
+      for (const [category, items] of categories) {
+        sections.push(`
+          <div class="builder-palette-group builder-palette-group-uploaded" data-upload-category="${escapeHtml(category)}">
+            <p class="builder-palette-group-subtitle">${escapeHtml(category)} (${items.length})</p>
+            <div class="builder-palette-group-items">
+              ${renderPaletteButtons(items)}
+            </div>
+          </div>
+        `);
+      }
+    }
+
+    if (sections.length === 0) {
+      sections.push(`
+        <div class="builder-empty-state">
+          <p class="builder-selection-title">No assets available</p>
+        </div>
+      `);
+    }
+
+    paletteElement.innerHTML = sections.join("");
   };
 
   const renderSceneObjects = (snapshot: BuilderSceneSnapshot): void => {
@@ -603,6 +717,7 @@ export function createBuilderPanel(
   const render = (): void => {
     const snapshot = sceneBuilder.getSnapshot();
     renderPalette(snapshot);
+    renderLibraryTools(snapshot);
     renderSceneObjects(snapshot);
     setActiveLibraryTab(activeLibraryTab);
 
@@ -795,6 +910,43 @@ export function createBuilderPanel(
     uploadAssetInput.click();
   });
 
+  uploadSortSelect.addEventListener("change", () => {
+    const nextSortMode = uploadSortSelect.value === "date-uploaded" ? "date-uploaded" : "alpha";
+    if (uploadedAssetSortMode === nextSortMode) {
+      return;
+    }
+
+    uploadedAssetSortMode = nextSortMode;
+    render();
+  });
+
+  renameCategoryButton.addEventListener("click", () => {
+    const snapshot = sceneBuilder.getSnapshot();
+    const selectedItem = getSelectedPaletteItem(snapshot);
+    if (!selectedItem || selectedItem.sourceType !== "uploaded") {
+      showToast("Select an uploaded asset to rename its category.", "info");
+      return;
+    }
+
+    const nextCategoryInput = window.prompt(
+      "Rename uploaded category:",
+      selectedItem.uploadedCategory ?? DEFAULT_UPLOADED_ASSET_CATEGORY
+    );
+    if (nextCategoryInput === null) {
+      return;
+    }
+
+    void sceneBuilder.renameUploadedAssetCategory(selectedItem.assetId, nextCategoryInput).then((result) => {
+      if (!result.success) {
+        showToast(result.error ?? "Category rename failed.", "error");
+        return;
+      }
+
+      showToast("Category updated.", "success");
+      render();
+    });
+  });
+
   clearUploadsButton.addEventListener("click", () => {
     const confirmed = window.confirm("Remove all uploaded assets and clear the scene?");
     if (!confirmed) {
@@ -851,21 +1003,40 @@ export function createBuilderPanel(
   document.addEventListener("pointerdown", handleDocumentPointerDown);
 
   uploadAssetInput.addEventListener("change", () => {
-    const file = uploadAssetInput.files?.[0];
-    if (!file) {
+    const files = Array.from(uploadAssetInput.files ?? []);
+    if (files.length === 0) {
       return;
     }
 
-    void sceneBuilder.uploadAsset(file).then((result) => {
+    const requestedCategory = window.prompt("Category for this upload batch:", DEFAULT_UPLOADED_ASSET_CATEGORY);
+    if (requestedCategory === null) {
       uploadAssetInput.value = "";
-      if (!result.success || !result.assetId) {
-        const message = result.error ?? "Asset upload failed.";
-        showToast(message, "error");
+      return;
+    }
+
+    void sceneBuilder.uploadAssets(files, { category: requestedCategory }).then((result) => {
+      uploadAssetInput.value = "";
+
+      const uploadedCount = result.uploaded.length;
+      const failedCount = result.failed.length;
+      if (uploadedCount === 0) {
+        const firstFailure = result.failed[0]?.error ?? "Asset upload failed.";
+        showToast(firstFailure, "error");
         return;
       }
 
-      showToast(`Uploaded ${file.name}. Added to the library.`, "success");
-      renderPalette(sceneBuilder.getSnapshot());
+      if (failedCount === 0) {
+        showToast(
+          `Uploaded ${uploadedCount} asset${uploadedCount === 1 ? "" : "s"} to ${result.category}.`,
+          "success"
+        );
+      } else {
+        showToast(
+          `Uploaded ${uploadedCount} asset${uploadedCount === 1 ? "" : "s"} and skipped ${failedCount}.`,
+          "info"
+        );
+      }
+      render();
     });
   });
 
@@ -901,7 +1072,7 @@ export function createBuilderPanel(
           return;
         }
         showToast(`Uploaded ${fileName}.`, "success");
-        renderPalette(sceneBuilder.getSnapshot());
+        render();
       })
       .catch((error) => {
         const message = error instanceof Error ? error.message : "Asset upload failed.";

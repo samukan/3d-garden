@@ -17,7 +17,13 @@ import { createDevelopmentCamera } from "../engine/developmentCamera";
 import { createAssetDefinitionMap, getAssetLabel, loadAssetDefinitions } from "../generation/assetCatalog";
 import { loadNatureKitAssetLibrary } from "../generation/NatureKitAssetLoader";
 import type { AssetDefinition, AssetId } from "../generation/natureKitAssetManifest";
-import { clearUploadedAssets, deleteUploadedAsset, saveUploadedAsset } from "../storage/uploadedAssetStore";
+import {
+  clearUploadedAssets,
+  deleteUploadedAsset,
+  normalizeUploadedAssetCategory,
+  renameUploadedAssetCategory as renameUploadedAssetCategoryInStore,
+  saveUploadedAsset
+} from "../storage/uploadedAssetStore";
 import { degreesToRadians } from "../utils/angle";
 import { isBrowserDebugEnabled, logBrowserDebug } from "../utils/browserDebug";
 import { enableMeshVertexColors } from "../utils/meshColors";
@@ -42,6 +48,23 @@ interface ImportLayoutOptions {
   recordHistory?: boolean;
 }
 
+export interface UploadedAssetUploadSuccess {
+  assetId: AssetId;
+  fileName: string;
+  label: string;
+}
+
+export interface UploadedAssetUploadFailure {
+  fileName: string;
+  error: string;
+}
+
+export interface UploadedAssetBatchUploadResult {
+  category: string;
+  failed: UploadedAssetUploadFailure[];
+  uploaded: UploadedAssetUploadSuccess[];
+}
+
 export interface SceneBuilderController {
   scene: Scene;
   deleteSelectedObject: () => void;
@@ -58,7 +81,14 @@ export interface SceneBuilderController {
   subscribe: (listener: () => void) => () => void;
   clearUploads: () => Promise<{ success: boolean; removedCount: number; error?: string }>;
   undo: () => Promise<boolean>;
+  uploadAssets: (
+    files: File[],
+    options?: {
+      category?: string;
+    }
+  ) => Promise<UploadedAssetBatchUploadResult>;
   uploadAsset: (file: File) => Promise<{ success: boolean; assetId?: AssetId; error?: string }>;
+  renameUploadedAssetCategory: (assetId: AssetId, nextCategory: string) => Promise<{ success: boolean; error?: string }>;
   updateSelectedTransform: (patch: {
     position?: Partial<BuilderVector3>;
     rotationY?: number;
@@ -203,10 +233,26 @@ export async function createSceneBuilder({
     }
   };
 
-  const refreshAssetCatalog = async (options?: { notify?: boolean }): Promise<void> => {
-    assetDefinitions = createAssetDefinitionMap(await loadAssetDefinitions());
+  const setAssetDefinitions = (nextAssetDefinitions: AssetDefinition[]): void => {
+    assetDefinitions = createAssetDefinitionMap(nextAssetDefinitions);
     palette = getBuilderPalette(Array.from(assetDefinitions.values()));
     assetLibrary.setDefinitions(Array.from(assetDefinitions.values()));
+  };
+
+  const upsertAssetDefinition = (definition: AssetDefinition): void => {
+    assetDefinitions.set(definition.id, definition);
+    palette = getBuilderPalette(Array.from(assetDefinitions.values()));
+    assetLibrary.setDefinitions(Array.from(assetDefinitions.values()));
+  };
+
+  const removeAssetDefinition = (assetId: AssetId): void => {
+    assetDefinitions.delete(assetId);
+    palette = getBuilderPalette(Array.from(assetDefinitions.values()));
+    assetLibrary.setDefinitions(Array.from(assetDefinitions.values()));
+  };
+
+  const refreshAssetCatalog = async (options?: { notify?: boolean }): Promise<void> => {
+    setAssetDefinitions(await loadAssetDefinitions());
 
     if (options?.notify !== false) {
       notify();
@@ -859,23 +905,128 @@ export async function createSceneBuilder({
     }
   };
 
-  const uploadAsset = async (file: File): Promise<{ success: boolean; assetId?: AssetId; error?: string }> => {
-    state.statusMessage = `Uploading ${file.name}...`;
-    notify();
+  const uploadAssets = async (
+    files: File[],
+    options?: {
+      category?: string;
+    }
+  ): Promise<UploadedAssetBatchUploadResult> => {
+    const category = normalizeUploadedAssetCategory(options?.category);
+    const queuedFiles = files.filter((file): file is File => file instanceof File);
+    if (queuedFiles.length === 0) {
+      state.statusMessage = "No files selected for upload.";
+      notify();
+      return {
+        category,
+        failed: [],
+        uploaded: []
+      };
+    }
 
-    let definition: AssetDefinition | null = null;
+    const uploaded: UploadedAssetUploadSuccess[] = [];
+    const failed: UploadedAssetUploadFailure[] = [];
+
+    for (const [index, file] of queuedFiles.entries()) {
+      state.statusMessage = `Uploading ${file.name} (${index + 1}/${queuedFiles.length})...`;
+      notify();
+
+      let definition: AssetDefinition | null = null;
+
+      try {
+        definition = await saveUploadedAsset(file, { category });
+        upsertAssetDefinition(definition);
+        await assetLibrary.preloadAsset(definition.id);
+        uploaded.push({
+          assetId: definition.id,
+          fileName: file.name,
+          label: definition.label
+        });
+      } catch (error) {
+        if (definition) {
+          await deleteUploadedAsset(definition.id);
+          await assetLibrary.evictAssets([definition.id]);
+          removeAssetDefinition(definition.id);
+        }
+
+        failed.push({
+          fileName: file.name,
+          error: error instanceof Error ? error.message : "Asset upload failed."
+        });
+      }
+    }
+
+    const uploadedCount = uploaded.length;
+    const failedCount = failed.length;
+    if (failedCount === 0) {
+      state.statusMessage = `Uploaded ${uploadedCount} asset${uploadedCount === 1 ? "" : "s"} to ${category}.`;
+    } else if (uploadedCount === 0) {
+      state.statusMessage =
+        failedCount === 1
+          ? failed[0].error
+          : `Failed to upload ${failedCount} asset${failedCount === 1 ? "" : "s"}.`;
+    } else {
+      state.statusMessage = `Uploaded ${uploadedCount} asset${uploadedCount === 1 ? "" : "s"}. ${failedCount} failed.`;
+    }
+
+    notify();
+    return {
+      category,
+      failed,
+      uploaded
+    };
+  };
+
+  const uploadAsset = async (file: File): Promise<{ success: boolean; assetId?: AssetId; error?: string }> => {
+    const result = await uploadAssets([file]);
+    const uploadedAsset = result.uploaded[0];
+    if (!uploadedAsset) {
+      return {
+        success: false,
+        error: result.failed[0]?.error ?? "Asset upload failed."
+      };
+    }
+
+    return {
+      success: true,
+      assetId: uploadedAsset.assetId
+    };
+  };
+
+  const renameUploadedAssetCategory = async (
+    assetId: AssetId,
+    nextCategory: string
+  ): Promise<{ success: boolean; error?: string }> => {
+    const existingDefinition = assetDefinitions.get(assetId);
+    if (!existingDefinition || existingDefinition.source.type !== "uploaded") {
+      return {
+        success: false,
+        error: "Only uploaded assets can be recategorized."
+      };
+    }
 
     try {
-      definition = await saveUploadedAsset(file);
-      await refreshAssetCatalog({ notify: false });
-      await assetLibrary.preloadAsset(definition.id);
-    } catch (error) {
-      if (definition) {
-        await deleteUploadedAsset(definition.id);
-        await refreshAssetCatalog({ notify: false });
+      const updatedDefinition = await renameUploadedAssetCategoryInStore(assetId, nextCategory);
+      if (!updatedDefinition) {
+        return {
+          success: false,
+          error: "Uploaded asset could not be found."
+        };
+      }
+      if (updatedDefinition.source.type !== "uploaded") {
+        return {
+          success: false,
+          error: "Uploaded asset metadata is invalid."
+        };
       }
 
-      const message = error instanceof Error ? error.message : "Asset upload failed.";
+      upsertAssetDefinition(updatedDefinition);
+      state.statusMessage = `Updated ${updatedDefinition.label} category to ${updatedDefinition.source.category}.`;
+      notify();
+      return {
+        success: true
+      };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Uploaded asset category could not be updated.";
       state.statusMessage = message;
       notify();
       return {
@@ -883,13 +1034,6 @@ export async function createSceneBuilder({
         error: message
       };
     }
-
-    state.statusMessage = `Uploaded ${definition.label}.`;
-    notify();
-    return {
-      success: true,
-      assetId: definition.id
-    };
   };
 
   scene.onPointerObservable.add((pointerInfo) => {
@@ -1055,7 +1199,9 @@ export async function createSceneBuilder({
     },
     clearUploads,
     undo,
+    uploadAssets,
     uploadAsset,
+    renameUploadedAssetCategory,
     updateSelectedTransform
   };
 }

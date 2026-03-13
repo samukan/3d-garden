@@ -17,6 +17,9 @@ export interface BuilderLayoutRecord {
 export interface BuilderPaletteItem {
   assetId: AssetId;
   label: string;
+  sourceType: "built-in" | "uploaded";
+  uploadedAt: string | null;
+  uploadedCategory: string | null;
 }
 
 export interface BuilderSelectedObjectSnapshot extends BuilderLayoutRecord {

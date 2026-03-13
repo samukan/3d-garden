@@ -1,4 +1,5 @@
 export type AssetId = string;
+export const DEFAULT_UPLOADED_ASSET_CATEGORY = "Uncategorized";
 
 export interface AssetDefinition {
   id: AssetId;
@@ -14,6 +15,8 @@ export interface AssetDefinition {
       }
     | {
         type: "uploaded";
+        category: string;
+        uploadedAt: string;
       };
 }
 

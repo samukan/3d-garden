@@ -1,4 +1,4 @@
-import type { AssetDefinition } from "../generation/natureKitAssetManifest";
+import { DEFAULT_UPLOADED_ASSET_CATEGORY, type AssetDefinition } from "../generation/natureKitAssetManifest";
 
 const DATABASE_NAME = "skill-garden.uploaded-assets.v1";
 const STORE_NAME = "uploaded-assets";
@@ -7,7 +7,8 @@ const UPLOAD_GROUP_LABEL = "Uploads";
 
 interface UploadedAssetRecord {
   blob: Blob;
-  createdAt: string;
+  category?: string;
+  createdAt?: string;
   fileName: string;
   fileSize: number;
   id: string;
@@ -15,7 +16,7 @@ interface UploadedAssetRecord {
   mimeType: string;
   rotationY: number;
   scale: number;
-  updatedAt: string;
+  updatedAt?: string;
 }
 
 function openDatabase(): Promise<IDBDatabase> {
@@ -105,7 +106,34 @@ function assertGlbFile(file: File): void {
   }
 }
 
+function normalizeIsoTimestamp(value: string | undefined, fallback: string): string {
+  if (!value) {
+    return fallback;
+  }
+
+  const parsed = Date.parse(value);
+  if (!Number.isFinite(parsed)) {
+    return fallback;
+  }
+
+  return new Date(parsed).toISOString();
+}
+
+function resolveRecordTimestamps(record: UploadedAssetRecord): { createdAt: string; updatedAt: string } {
+  const epoch = new Date(0).toISOString();
+  const updatedAt = normalizeIsoTimestamp(record.updatedAt, normalizeIsoTimestamp(record.createdAt, epoch));
+  const createdAt = normalizeIsoTimestamp(record.createdAt, updatedAt);
+  return { createdAt, updatedAt };
+}
+
+export function normalizeUploadedAssetCategory(input: string | null | undefined): string {
+  const normalized = input?.trim();
+  return normalized ? titleCaseLabel(normalized) : DEFAULT_UPLOADED_ASSET_CATEGORY;
+}
+
 function toAssetDefinition(record: UploadedAssetRecord): AssetDefinition {
+  const { createdAt } = resolveRecordTimestamps(record);
+
   return {
     id: record.id,
     label: record.label,
@@ -114,7 +142,9 @@ function toAssetDefinition(record: UploadedAssetRecord): AssetDefinition {
     groupId: UPLOAD_GROUP_ID,
     groupLabel: UPLOAD_GROUP_LABEL,
     source: {
-      type: "uploaded"
+      type: "uploaded",
+      category: normalizeUploadedAssetCategory(record.category),
+      uploadedAt: createdAt
     }
   };
 }
@@ -152,12 +182,18 @@ export async function clearUploadedAssets(): Promise<string[]> {
   return keys.map((key) => String(key));
 }
 
-export async function saveUploadedAsset(file: File): Promise<AssetDefinition> {
+export async function saveUploadedAsset(
+  file: File,
+  options?: {
+    category?: string;
+  }
+): Promise<AssetDefinition> {
   assertGlbFile(file);
 
   const now = new Date().toISOString();
   const record: UploadedAssetRecord = {
     blob: file,
+    category: normalizeUploadedAssetCategory(options?.category),
     createdAt: now,
     fileName: file.name,
     fileSize: file.size,
@@ -171,4 +207,24 @@ export async function saveUploadedAsset(file: File): Promise<AssetDefinition> {
 
   await withStore<IDBValidKey>("readwrite", (store) => store.put(record));
   return toAssetDefinition(record);
+}
+
+export async function renameUploadedAssetCategory(
+  assetId: string,
+  nextCategory: string
+): Promise<AssetDefinition | null> {
+  const record = await withStore<UploadedAssetRecord | undefined>("readonly", (store) => store.get(assetId));
+  if (!record) {
+    return null;
+  }
+
+  const { createdAt } = resolveRecordTimestamps(record);
+  const updatedRecord: UploadedAssetRecord = {
+    ...record,
+    category: normalizeUploadedAssetCategory(nextCategory),
+    createdAt,
+    updatedAt: new Date().toISOString()
+  };
+  await withStore<IDBValidKey>("readwrite", (store) => store.put(updatedRecord));
+  return toAssetDefinition(updatedRecord);
 }
