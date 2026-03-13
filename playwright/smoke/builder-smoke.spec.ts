@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 
 import { attachBrowserDebugListeners, normalizeInlineText } from "../browserDebugTestUtils";
 
@@ -12,6 +12,87 @@ interface BuilderDebugApi {
   beginGizmoInteractionForTest: () => void;
   completeGizmoInteractionForTest: () => void;
   getState: () => BuilderDebugState;
+}
+
+interface CanvasVisualStats {
+  luminanceSpread: number;
+  sampleCount: number;
+  uniqueColors: number;
+}
+
+async function collectCanvasVisualStats(page: Page): Promise<CanvasVisualStats | null> {
+  return page.evaluate(async () => {
+    const canvas = document.querySelector<HTMLCanvasElement>("#renderCanvas");
+    if (!canvas) {
+      return null;
+    }
+
+    const gl = (canvas.getContext("webgl2") as WebGL2RenderingContext | null)
+      ?? (canvas.getContext("webgl") as WebGLRenderingContext | null);
+    if (!gl) {
+      return null;
+    }
+
+    const width = gl.drawingBufferWidth;
+    const height = gl.drawingBufferHeight;
+    if (width < 2 || height < 2) {
+      return {
+        luminanceSpread: 0,
+        sampleCount: 0,
+        uniqueColors: 0
+      };
+    }
+
+    const sampleFrame = (): CanvasVisualStats => {
+      const samplesX = 12;
+      const samplesY = 8;
+      const uniqueColors = new Set<string>();
+      const pixel = new Uint8Array(4);
+      let minLuminance = 255;
+      let maxLuminance = 0;
+      let sampleCount = 0;
+
+      for (let row = 0; row < samplesY; row += 1) {
+        for (let column = 0; column < samplesX; column += 1) {
+          const x = Math.floor((column / (samplesX - 1)) * (width - 1));
+          const y = Math.floor((row / (samplesY - 1)) * (height - 1));
+          gl.readPixels(x, y, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, pixel);
+
+          const red = pixel[0] ?? 0;
+          const green = pixel[1] ?? 0;
+          const blue = pixel[2] ?? 0;
+          const quantizedColor = `${red >> 4}-${green >> 4}-${blue >> 4}`;
+          uniqueColors.add(quantizedColor);
+
+          const luminance = red * 0.2126 + green * 0.7152 + blue * 0.0722;
+          minLuminance = Math.min(minLuminance, luminance);
+          maxLuminance = Math.max(maxLuminance, luminance);
+
+          sampleCount += 1;
+        }
+      }
+
+      return {
+        luminanceSpread: Number((maxLuminance - minLuminance).toFixed(2)),
+        sampleCount,
+        uniqueColors: uniqueColors.size
+      };
+    };
+
+    let best = sampleFrame();
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      await new Promise((resolve) => window.requestAnimationFrame(() => resolve(undefined)));
+      const next = sampleFrame();
+      if (
+        next.uniqueColors > best.uniqueColors
+        || (next.uniqueColors === best.uniqueColors && next.luminanceSpread > best.luminanceSpread)
+      ) {
+        best = next;
+      }
+    }
+
+    return best;
+  });
 }
 
 function extractFirstObjectLayout(exportedLayout: string): {
@@ -37,6 +118,21 @@ function extractFirstObjectLayout(exportedLayout: string): {
 
 test("boots builder mode and supports basic layout actions", async ({ page, baseURL }) => {
   const pageErrors = attachBrowserDebugListeners(page);
+  const shaderCompileErrors: string[] = [];
+  page.on("console", (message) => {
+    if (message.type() !== "error") {
+      return;
+    }
+
+    const text = message.text();
+    if (
+      text.includes("Unable to compile effect") ||
+      text.includes("FRAGMENT SHADER ERROR") ||
+      text.includes("Offending line")
+    ) {
+      shaderCompileErrors.push(text);
+    }
+  });
 
   await page.goto(`${baseURL}/?renderer=webgl&appMode=builder&debugBrowserLogs=1`, {
     waitUntil: "domcontentloaded"
@@ -126,6 +222,11 @@ test("boots builder mode and supports basic layout actions", async ({ page, base
   });
   await expect(page.locator("#builder-selection-summary")).not.toContainText("No object selected");
   await expect(page.locator("#builder-selection-summary")).toContainText("builder-object-");
+  const postPlacementVisualStats = await collectCanvasVisualStats(page);
+  expect(postPlacementVisualStats).not.toBeNull();
+  expect(postPlacementVisualStats?.sampleCount).toBeGreaterThan(0);
+  expect(postPlacementVisualStats?.uniqueColors).toBeGreaterThan(3);
+  expect(postPlacementVisualStats?.luminanceSpread).toBeGreaterThan(8);
 
   const selectionDebugState = await page.evaluate(() => {
     const api = (window as Window & { __skillGardenBuilderDebug?: BuilderDebugApi }).__skillGardenBuilderDebug;
@@ -194,5 +295,6 @@ test("boots builder mode and supports basic layout actions", async ({ page, base
   const builderStatus = await page.locator("#builder-status").innerText();
   console.log(`[builder:ready] ${normalizeInlineText(builderStatus)}`);
 
+  expect(shaderCompileErrors, "Builder should not emit Babylon shader compile errors in WebGL mode.").toHaveLength(0);
   expect(pageErrors, "No uncaught browser page errors should occur during builder bootstrap.").toHaveLength(0);
 });

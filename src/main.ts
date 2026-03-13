@@ -4,6 +4,7 @@ import { activeAppRoute, buildAppHref, navigateToRoute } from "./appMode";
 import { parseBuilderLayoutDocument, serializeBuilderLayout } from "./builder/sceneLayoutSerializer";
 import { createSceneBuilder } from "./builder/sceneBuilder";
 import { initEngine } from "./engine/initEngine";
+import { registerCoreShaders } from "./engine/registerCoreShaders";
 import { createBuilderPanel } from "./ui/builderPanel";
 import { createMenuPanel } from "./ui/menuPanel";
 import { createStatusBar } from "./ui/statusBar";
@@ -42,6 +43,7 @@ function formatWorldDate(dateValue: string): string {
 
 async function bootstrap(): Promise<void> {
   logBrowserDebug("bootstrap:start");
+  registerCoreShaders();
 
   const canvas = document.querySelector<HTMLCanvasElement>("#renderCanvas");
   const statusElement = document.querySelector<HTMLElement>("#status-badge");
