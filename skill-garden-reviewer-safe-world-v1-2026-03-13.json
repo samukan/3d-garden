@@ -1,0 +1,173 @@
+{
+  "version": 1,
+  "objects": [
+    {
+      "id": "builder-object-1",
+      "assetId": "groundTile",
+      "position": { "x": 0, "y": 0, "z": 0 },
+      "rotationY": 0,
+      "scale": 1
+    },
+    {
+      "id": "builder-object-2",
+      "assetId": "groundTile",
+      "position": { "x": 4, "y": 0, "z": 0 },
+      "rotationY": 0,
+      "scale": 1
+    },
+    {
+      "id": "builder-object-3",
+      "assetId": "groundTile",
+      "position": { "x": -4, "y": 0, "z": 0 },
+      "rotationY": 0,
+      "scale": 1
+    },
+    {
+      "id": "builder-object-4",
+      "assetId": "groundTile",
+      "position": { "x": 0, "y": 0, "z": 4 },
+      "rotationY": 0,
+      "scale": 1
+    },
+    {
+      "id": "builder-object-5",
+      "assetId": "groundTile",
+      "position": { "x": 0, "y": 0, "z": -4 },
+      "rotationY": 0,
+      "scale": 1
+    },
+    {
+      "id": "builder-object-6",
+      "assetId": "groundTile",
+      "position": { "x": 4, "y": 0, "z": 4 },
+      "rotationY": 0,
+      "scale": 1
+    },
+    {
+      "id": "builder-object-7",
+      "assetId": "groundTile",
+      "position": { "x": -4, "y": 0, "z": 4 },
+      "rotationY": 0,
+      "scale": 1
+    },
+    {
+      "id": "builder-object-8",
+      "assetId": "groundTile",
+      "position": { "x": 4, "y": 0, "z": -4 },
+      "rotationY": 0,
+      "scale": 1
+    },
+    {
+      "id": "builder-object-9",
+      "assetId": "groundTile",
+      "position": { "x": -4, "y": 0, "z": -4 },
+      "rotationY": 0,
+      "scale": 1
+    },
+    {
+      "id": "builder-object-10",
+      "assetId": "pathStraight",
+      "position": { "x": 0, "y": 0, "z": 0 },
+      "rotationY": 0,
+      "scale": 1
+    },
+    {
+      "id": "builder-object-11",
+      "assetId": "pathStraight",
+      "position": { "x": 0, "y": 0, "z": 2 },
+      "rotationY": 0,
+      "scale": 1
+    },
+    {
+      "id": "builder-object-12",
+      "assetId": "pathStraight",
+      "position": { "x": 0, "y": 0, "z": -2 },
+      "rotationY": 0,
+      "scale": 1
+    },
+    {
+      "id": "builder-object-13",
+      "assetId": "pathTile",
+      "position": { "x": 0, "y": 0, "z": 4 },
+      "rotationY": 0,
+      "scale": 1
+    },
+    {
+      "id": "builder-object-14",
+      "assetId": "pathEnd",
+      "position": { "x": 0, "y": 0, "z": 6 },
+      "rotationY": 180,
+      "scale": 1
+    },
+    {
+      "id": "builder-object-15",
+      "assetId": "cliffBlock",
+      "position": { "x": 6, "y": 0, "z": 0 },
+      "rotationY": 0,
+      "scale": 1
+    },
+    {
+      "id": "builder-object-16",
+      "assetId": "cliffCorner",
+      "position": { "x": 6, "y": 0, "z": 2 },
+      "rotationY": 90,
+      "scale": 1
+    },
+    {
+      "id": "builder-object-17",
+      "assetId": "cliffSteps",
+      "position": { "x": 6, "y": 0, "z": -2 },
+      "rotationY": 0,
+      "scale": 1
+    },
+    {
+      "id": "builder-object-18",
+      "assetId": "tree",
+      "position": { "x": -2, "y": 0, "z": 0 },
+      "rotationY": 0,
+      "scale": 1.2
+    },
+    {
+      "id": "builder-object-19",
+      "assetId": "tree",
+      "position": { "x": 2, "y": 0, "z": 0 },
+      "rotationY": 0,
+      "scale": 1.2
+    },
+    {
+      "id": "builder-object-20",
+      "assetId": "bush",
+      "position": { "x": -2, "y": 0, "z": 2 },
+      "rotationY": 0,
+      "scale": 1
+    },
+    {
+      "id": "builder-object-21",
+      "assetId": "bush",
+      "position": { "x": 2, "y": 0, "z": 2 },
+      "rotationY": 0,
+      "scale": 1
+    },
+    {
+      "id": "builder-object-22",
+      "assetId": "rock",
+      "position": { "x": -2, "y": 0, "z": -2 },
+      "rotationY": 0,
+      "scale": 1
+    },
+    {
+      "id": "builder-object-23",
+      "assetId": "rock",
+      "position": { "x": 2, "y": 0, "z": -2 },
+      "rotationY": 0,
+      "scale": 1
+    },
+    {
+      "id": "builder-object-24",
+      "assetId": "focalProp",
+      "position": { "x": 0, "y": 0, "z": 1 },
+      "rotationY": 0,
+      "scale": 1.2
+    }
+  ]
+}

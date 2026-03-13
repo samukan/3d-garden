@@ -35,8 +35,7 @@ export default defineConfig({
     env: {
       ...process.env,
       VITE_APP_MODE: "menu",
-      VITE_RENDERER: "webgl",
-      VITE_DEBUG_BROWSER_LOGS: "true"
+      VITE_RENDERER: "webgl"
     }
   }
 });

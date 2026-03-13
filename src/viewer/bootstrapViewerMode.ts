@@ -5,7 +5,8 @@ import { Scene } from "@babylonjs/core/scene";
 import type { AppRoute } from "../appMode";
 import { buildAppHref } from "../appMode";
 import { createLayoutScene } from "../engine/createLayoutScene";
-import { createViewerPanel } from "../ui/viewerPanel";
+import { createViewerPanel, type ViewerPanelState } from "../ui/viewerPanel";
+import { isBrowserDebugEnabled } from "../utils/browserDebug";
 import { resolveViewerWorld } from "./resolveViewerWorld";
 import type { ViewerLoadState } from "./viewerTypes";
 
@@ -73,33 +74,53 @@ export async function bootstrapViewerMode(options: BootstrapViewerModeOptions): 
   menuLinkElement.textContent = "Back To Menu";
   editLinkElement.hidden = true;
   editLinkElement.removeAttribute("href");
+  const devFreeCameraEnabled = isBrowserDebugEnabled();
 
   let resetView = (): void => {};
+  let toggleCameraMode = (): void => {};
+  let panelState: ViewerPanelState = {
+    loadState: "loading",
+    title: "Loading world...",
+    sourceLabel: "Saved World",
+    objectCount: 0,
+    loadedObjectCount: 0,
+    skippedObjectCount: 0,
+    updatedAtLabel: "Loading...",
+    message: messageForState("loading", 0, 0),
+    issues: [],
+    canResetView: false,
+    cameraMode: "presentationOrbit",
+    canToggleCameraMode: false
+  };
 
   const viewerPanel = createViewerPanel(viewerPanelElement, {
     onResetView: () => {
       resetView();
     },
-    state: {
-      loadState: "loading",
-      title: "Loading world...",
-      sourceLabel: "Saved World",
-      objectCount: 0,
-      loadedObjectCount: 0,
-      skippedObjectCount: 0,
-      updatedAtLabel: "Loading...",
-      message: messageForState("loading", 0, 0),
-      issues: [],
-      canResetView: false
-    }
+    onToggleCameraMode: () => {
+      toggleCameraMode();
+    },
+    state: panelState
   });
+
+  const setViewerPanelState = (nextState: ViewerPanelState): void => {
+    panelState = { ...nextState };
+    viewerPanel.setState(panelState);
+  };
+
+  const patchViewerPanelState = (patch: Partial<ViewerPanelState>): void => {
+    setViewerPanelState({
+      ...panelState,
+      ...patch
+    });
+  };
 
   const worldResolution = resolveViewerWorld(route);
 
   if (!worldResolution.success) {
     appTitle.textContent = "Viewer unavailable";
     appCopy.textContent = worldResolution.error;
-    viewerPanel.setState({
+    setViewerPanelState({
       loadState: "error",
       title: "Viewer unavailable",
       sourceLabel: "Saved World",
@@ -109,15 +130,27 @@ export async function bootstrapViewerMode(options: BootstrapViewerModeOptions): 
       updatedAtLabel: "Unknown",
       message: worldResolution.error,
       issues: [],
-      canResetView: false
+      canResetView: false,
+      cameraMode: "presentationOrbit",
+      canToggleCameraMode: false
     });
 
     const fallbackScene = await createLayoutScene({
       canvas,
       engine,
-      layoutRecords: []
+      layoutRecords: [],
+      enableDevFreeCamera: devFreeCameraEnabled
     });
     resetView = fallbackScene.resetView;
+    toggleCameraMode = () => {
+      if (!fallbackScene.canUseDevFreeCamera()) {
+        return;
+      }
+
+      patchViewerPanelState({
+        cameraMode: fallbackScene.toggleCameraMode()
+      });
+    };
 
     return {
       scene: fallbackScene.scene,
@@ -143,7 +176,7 @@ export async function bootstrapViewerMode(options: BootstrapViewerModeOptions): 
   }
 
   const initialUpdatedLabel = formatWorldDate(world.updatedAt);
-  viewerPanel.setState({
+  setViewerPanelState({
     loadState: "loading",
     title: world.name,
     sourceLabel: sourceLabel(world.source),
@@ -153,7 +186,9 @@ export async function bootstrapViewerMode(options: BootstrapViewerModeOptions): 
     updatedAtLabel: initialUpdatedLabel,
     message: messageForState("loading", 0, 0),
     issues: [],
-    canResetView: false
+    canResetView: false,
+    cameraMode: "presentationOrbit",
+    canToggleCameraMode: false
   });
 
   try {
@@ -162,8 +197,14 @@ export async function bootstrapViewerMode(options: BootstrapViewerModeOptions): 
       engine,
       layoutRecords: world.layoutRecords,
       atmosphereProfile,
+      enableDevFreeCamera: devFreeCameraEnabled,
+      onCameraModeChange: (cameraMode) => {
+        patchViewerPanelState({
+          cameraMode
+        });
+      },
       onProgress: ({ loadedObjectCount, skippedObjectCount }) => {
-        viewerPanel.setState({
+        patchViewerPanelState({
           loadState: "loading",
           title: world.name,
           sourceLabel: sourceLabel(world.source),
@@ -179,6 +220,13 @@ export async function bootstrapViewerMode(options: BootstrapViewerModeOptions): 
     });
 
     resetView = sceneController.resetView;
+    toggleCameraMode = () => {
+      if (!sceneController.canUseDevFreeCamera()) {
+        return;
+      }
+
+      sceneController.toggleCameraMode();
+    };
     const loadState: ViewerLoadState =
       sceneController.loadIssues.length > 0 ? "partial" : "ready";
     const issues = summarizeIssues(sceneController.loadIssues.map((issue) => issue.message));
@@ -197,7 +245,7 @@ export async function bootstrapViewerMode(options: BootstrapViewerModeOptions): 
       } for exploration.`;
     }
 
-    viewerPanel.setState({
+    setViewerPanelState({
       loadState,
       title: world.name,
       sourceLabel: sourceLabel(world.source),
@@ -213,7 +261,9 @@ export async function bootstrapViewerMode(options: BootstrapViewerModeOptions): 
             sceneController.skippedObjectCount
           ),
       issues,
-      canResetView: true
+      canResetView: true,
+      cameraMode: sceneController.getCameraMode(),
+      canToggleCameraMode: sceneController.canUseDevFreeCamera()
     });
 
     return {
@@ -225,7 +275,7 @@ export async function bootstrapViewerMode(options: BootstrapViewerModeOptions): 
   } catch (error) {
     const message = error instanceof Error ? error.message : "Viewer could not load this world.";
     appCopy.textContent = message;
-    viewerPanel.setState({
+    setViewerPanelState({
       loadState: "error",
       title: world.name,
       sourceLabel: sourceLabel(world.source),
@@ -235,16 +285,28 @@ export async function bootstrapViewerMode(options: BootstrapViewerModeOptions): 
       updatedAtLabel: initialUpdatedLabel,
       message,
       issues: [],
-      canResetView: false
+      canResetView: false,
+      cameraMode: "presentationOrbit",
+      canToggleCameraMode: false
     });
 
     const fallbackScene = await createLayoutScene({
       canvas,
       engine,
       layoutRecords: [],
-      atmosphereProfile
+      atmosphereProfile,
+      enableDevFreeCamera: devFreeCameraEnabled
     });
     resetView = fallbackScene.resetView;
+    toggleCameraMode = () => {
+      if (!fallbackScene.canUseDevFreeCamera()) {
+        return;
+      }
+
+      patchViewerPanelState({
+        cameraMode: fallbackScene.toggleCameraMode()
+      });
+    };
 
     return {
       scene: fallbackScene.scene,

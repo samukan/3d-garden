@@ -1,5 +1,6 @@
 import type { ViewerLoadState } from "../viewer/viewerTypes";
 import { escapeHtml } from "../utils/html";
+import type { ViewerCameraMode } from "../engine/viewerCameraRig";
 
 export interface ViewerPanelState {
   loadState: ViewerLoadState;
@@ -12,6 +13,8 @@ export interface ViewerPanelState {
   message: string | null;
   issues: string[];
   canResetView: boolean;
+  cameraMode: ViewerCameraMode;
+  canToggleCameraMode: boolean;
 }
 
 export interface ViewerPanelController {
@@ -21,6 +24,7 @@ export interface ViewerPanelController {
 
 export interface CreateViewerPanelOptions {
   onResetView: () => void;
+  onToggleCameraMode: () => void;
   state: ViewerPanelState;
 }
 
@@ -38,6 +42,16 @@ function loadStateLabel(loadState: ViewerLoadState): string {
   }
 
   return "Ready";
+}
+
+function cameraLegend(cameraMode: ViewerCameraMode, canToggleCameraMode: boolean): string {
+  if (cameraMode === "devFree") {
+    return "Drag: look | W/A/S/D: move | Shift+F: orbit | R: reset";
+  }
+
+  return canToggleCameraMode
+    ? "Drag: orbit | Right-drag: pan | Wheel: zoom | Shift+F: free cam | R: reset"
+    : "Drag: orbit | Right-drag: pan | Wheel: zoom | R: reset";
 }
 
 export function createViewerPanel(element: HTMLElement, options: CreateViewerPanelOptions): ViewerPanelController {
@@ -83,7 +97,14 @@ export function createViewerPanel(element: HTMLElement, options: CreateViewerPan
         }
         <div class="viewer-panel-section">
           <p class="viewer-panel-label">Navigation</p>
-          <p class="viewer-controls-legend">Drag: orbit | Right-drag: pan | Wheel: zoom | R: reset</p>
+          <p class="viewer-controls-legend">${cameraLegend(state.cameraMode, state.canToggleCameraMode)}</p>
+          ${
+            state.canToggleCameraMode
+              ? `<button id="viewer-toggle-camera-mode" class="ui-button builder-button builder-button-block" type="button" aria-pressed="${state.cameraMode === "devFree"}">${
+                  state.cameraMode === "devFree" ? "Presentation Camera" : "Dev Free Camera"
+                }</button>`
+              : ""
+          }
           <button id="viewer-reset-view" class="ui-button builder-button builder-button-block" type="button"${
             state.canResetView ? "" : " disabled"
           }>Reset View</button>
@@ -99,12 +120,18 @@ export function createViewerPanel(element: HTMLElement, options: CreateViewerPan
       return;
     }
 
-    const button = target.closest<HTMLButtonElement>("#viewer-reset-view");
-    if (!button || button.disabled) {
+    const resetButton = target.closest<HTMLButtonElement>("#viewer-reset-view");
+    if (resetButton && !resetButton.disabled) {
+      options.onResetView();
       return;
     }
 
-    options.onResetView();
+    const toggleButton = target.closest<HTMLButtonElement>("#viewer-toggle-camera-mode");
+    if (!toggleButton || toggleButton.disabled) {
+      return;
+    }
+
+    options.onToggleCameraMode();
   };
 
   element.hidden = false;

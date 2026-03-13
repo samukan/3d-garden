@@ -13,24 +13,30 @@ import { Scene } from "@babylonjs/core/scene";
 
 import type { BuilderLayoutRecord } from "../builder/builderTypes";
 import type { AssetDefinition } from "../generation/natureKitAssetManifest";
-import { createDevelopmentCamera, type CameraOverviewFrame } from "./developmentCamera";
 import { createAssetDefinitionMap, loadAssetDefinitions } from "../generation/assetCatalog";
 import { loadNatureKitAssetLibrary } from "../generation/NatureKitAssetLoader";
 import { degreesToRadians } from "../utils/angle";
 import { enableMeshVertexColors } from "../utils/meshColors";
 import type { ViewerLoadIssue, ViewerWorldBounds } from "../viewer/viewerTypes";
+import {
+  createViewerCameraRig,
+  type CameraOverviewFrame,
+  type ViewerCameraMode
+} from "./viewerCameraRig";
 
 interface CreateLayoutSceneOptions {
   canvas: HTMLCanvasElement;
   engine: Engine | WebGPUEngine;
   layoutRecords: BuilderLayoutRecord[];
   atmosphereProfile?: ViewerAtmosphereProfile;
+  enableDevFreeCamera?: boolean;
   onProgress?: (progress: {
     totalObjectCount: number;
     processedObjectCount: number;
     loadedObjectCount: number;
     skippedObjectCount: number;
   }) => void;
+  onCameraModeChange?: (mode: ViewerCameraMode) => void;
 }
 
 export interface LayoutSceneController {
@@ -40,6 +46,10 @@ export interface LayoutSceneController {
   skippedAssetIds: string[];
   loadIssues: ViewerLoadIssue[];
   worldBounds: ViewerWorldBounds | null;
+  getCameraMode: () => ViewerCameraMode;
+  setCameraMode: (mode: ViewerCameraMode) => ViewerCameraMode;
+  toggleCameraMode: () => ViewerCameraMode;
+  canUseDevFreeCamera: () => boolean;
   resetView: () => void;
 }
 
@@ -173,11 +183,15 @@ export async function createLayoutScene({
   engine,
   layoutRecords,
   atmosphereProfile = "default",
-  onProgress
+  enableDevFreeCamera = false,
+  onProgress,
+  onCameraModeChange
 }: CreateLayoutSceneOptions): Promise<LayoutSceneController> {
   const scene = new Scene(engine);
-  const developmentCamera = createDevelopmentCamera(scene, canvas);
-  scene.activeCamera = developmentCamera.camera;
+  const viewerCameraRig = createViewerCameraRig(scene, canvas, {
+    enableDevFreeCamera
+  });
+  scene.activeCamera = viewerCameraRig.camera;
 
   const useEkaPresentation = atmosphereProfile === "ekaPresentation";
 
@@ -322,22 +336,37 @@ export async function createLayoutScene({
 
   const worldBounds = worldMin && worldMax ? createWorldBounds(worldMin, worldMax) : null;
   if (worldBounds) {
-    developmentCamera.setOverviewFrame(toOverviewFrame(worldBounds), true);
+    viewerCameraRig.setOverviewFrame(toOverviewFrame(worldBounds), true);
   }
 
+  const emitCameraModeChange = (): void => {
+    onCameraModeChange?.(viewerCameraRig.getMode());
+  };
+
   const handleKeyDown = (event: KeyboardEvent): void => {
-    if (event.repeat || event.key.toLowerCase() !== "r") {
+    if (event.repeat) {
       return;
     }
 
-    developmentCamera.resetOverview(true);
+    const key = event.key.toLowerCase();
+    if (key === "r") {
+      viewerCameraRig.resetView(true);
+      emitCameraModeChange();
+      return;
+    }
+
+    if (key === "f" && event.shiftKey && viewerCameraRig.canUseDevFree()) {
+      event.preventDefault();
+      viewerCameraRig.toggleMode();
+      emitCameraModeChange();
+    }
   };
 
   window.addEventListener("keydown", handleKeyDown);
   scene.onDisposeObservable.add(() => {
     window.removeEventListener("keydown", handleKeyDown);
     assetLibrary.dispose();
-    developmentCamera.dispose();
+    viewerCameraRig.dispose();
   });
 
   return {
@@ -347,8 +376,21 @@ export async function createLayoutScene({
     skippedAssetIds,
     loadIssues,
     worldBounds,
+    getCameraMode: () => viewerCameraRig.getMode(),
+    setCameraMode: (mode) => {
+      const nextMode = viewerCameraRig.setMode(mode);
+      emitCameraModeChange();
+      return nextMode;
+    },
+    toggleCameraMode: () => {
+      const nextMode = viewerCameraRig.toggleMode();
+      emitCameraModeChange();
+      return nextMode;
+    },
+    canUseDevFreeCamera: () => viewerCameraRig.canUseDevFree(),
     resetView: () => {
-      developmentCamera.resetOverview(true);
+      viewerCameraRig.resetView(true);
+      emitCameraModeChange();
     }
   };
 }
