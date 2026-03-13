@@ -178,7 +178,7 @@ async function bootstrap(): Promise<void> {
     renderMenuMode(activeAppRoute.notice);
     void startMenuBackgroundRuntime({
       canvas,
-      enableSubtleMotion: false
+      enableSubtleMotion: true
     }).then((runtime) => {
       window.addEventListener(
         "beforeunload",

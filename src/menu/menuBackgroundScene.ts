@@ -12,19 +12,14 @@ import { HDRCubeTexture } from "@babylonjs/core/Materials/Textures/hdrCubeTextur
 import { Scene } from "@babylonjs/core/scene";
 import "@babylonjs/loaders";
 
+import { createCameraRoutePlayer } from "../camera-routes/cameraRoutePlayer";
+import { resolveCameraRoute } from "../camera-routes/cameraRouteRegistry";
 import {
   MENU_BACKGROUND_ASSET_PATHS,
   MENU_BACKGROUND_ATMOSPHERE,
   MENU_BACKGROUND_CAMERA_DEFAULTS,
   MENU_BACKGROUND_LIGHTING
 } from "./menuBackgroundConfig";
-
-interface MenuCameraMotion {
-  enabled: boolean;
-  alphaAmplitude: number;
-  betaAmplitude: number;
-  speed: number;
-}
 
 export interface MenuBackgroundSceneOptions {
   glbUrl?: string;
@@ -128,30 +123,6 @@ async function tryLoadGlb(scene: Scene, glbUrl: string): Promise<void> {
   }
 }
 
-function attachMenuCameraMotion(
-  scene: Scene,
-  camera: ArcRotateCamera,
-  motion: MenuCameraMotion
-): () => void {
-  if (!motion.enabled) {
-    return () => {};
-  }
-
-  const baseAlpha = camera.alpha;
-  const baseBeta = camera.beta;
-  const observer = scene.onBeforeRenderObservable.add(() => {
-    const elapsedSeconds = performance.now() * 0.001;
-    camera.alpha = baseAlpha + Math.sin(elapsedSeconds * motion.speed) * motion.alphaAmplitude;
-    camera.beta = baseBeta + Math.cos(elapsedSeconds * (motion.speed * 0.8)) * motion.betaAmplitude;
-  });
-
-  return () => {
-    if (observer) {
-      scene.onBeforeRenderObservable.remove(observer);
-    }
-  };
-}
-
 export async function createMenuBackgroundScene(
   engine: Engine | WebGPUEngine,
   options: MenuBackgroundSceneOptions = {}
@@ -161,6 +132,11 @@ export async function createMenuBackgroundScene(
 
   const camera = createMenuCamera(scene);
   scene.activeCamera = camera;
+  const cameraRoutePlayer = createCameraRoutePlayer({
+    scene,
+    camera
+  });
+  cameraRoutePlayer.setRoute(resolveCameraRoute("menu/main"));
 
   const hemisphericLight = new HemisphericLight("menu-hemi", new Vector3(0, 1, 0), scene);
   hemisphericLight.intensity = MENU_BACKGROUND_LIGHTING.hemispheric.intensity;
@@ -176,22 +152,21 @@ export async function createMenuBackgroundScene(
   directionalLight.intensity = MENU_BACKGROUND_LIGHTING.directional.intensity;
   directionalLight.diffuse = MENU_BACKGROUND_LIGHTING.directional.diffuse;
 
-  const disposeMotion = attachMenuCameraMotion(scene, camera, {
-    enabled: Boolean(options.enableSubtleMotion),
-    alphaAmplitude: 0.012,
-    betaAmplitude: 0.008,
-    speed: 0.22
-  });
-
   await Promise.all([
     tryLoadHdr(scene, options.hdrUrl ?? MENU_BACKGROUND_ASSET_PATHS.hdrUrl),
     tryLoadGlb(scene, options.glbUrl ?? MENU_BACKGROUND_ASSET_PATHS.glbUrl)
   ]);
 
+  if (options.enableSubtleMotion) {
+    cameraRoutePlayer.play({ restart: true });
+  } else {
+    cameraRoutePlayer.stop({ resetToStart: true });
+  }
+
   return {
     scene,
     dispose: () => {
-      disposeMotion();
+      cameraRoutePlayer.dispose();
       scene.dispose();
     }
   };
