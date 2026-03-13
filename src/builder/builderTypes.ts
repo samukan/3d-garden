@@ -1,5 +1,9 @@
 import type { AssetId } from "../generation/natureKitAssetManifest";
-import type { CameraRouteDefinition } from "../camera-routes/cameraRouteTypes";
+import type {
+  CameraRouteDefinition,
+  CameraRouteEasing,
+  CameraRouteTiming
+} from "../camera-routes/cameraRouteTypes";
 
 export interface BuilderVector3 {
   x: number;
@@ -53,6 +57,24 @@ export interface BuilderWorldCameraRoutesMetadata {
 
 export interface BuilderWorldMetadata {
   cameraRoutes?: BuilderWorldCameraRoutesMetadata;
+}
+
+export type BuilderRoutePointMoveDirection = "up" | "down";
+
+export interface BuilderRouteSettingsPatch {
+  name?: string;
+  loop?: boolean;
+  easing?: CameraRouteEasing;
+  timing?: CameraRouteTiming;
+}
+
+export interface BuilderRouteEditState {
+  routeModeEnabled: boolean;
+  selectedRouteId: string | null;
+  selectedPointIndex: number | null;
+  isPreviewPlaying: boolean;
+  defaultRouteId: string | null;
+  routes: CameraRouteDefinition[];
 }
 
 export interface SavedWorldSummary {

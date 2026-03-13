@@ -9,11 +9,14 @@ import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import { Color3, Color4 } from "@babylonjs/core/Maths/math.color";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import type { AbstractMesh } from "@babylonjs/core/Meshes/abstractMesh";
+import type { LinesMesh } from "@babylonjs/core/Meshes/linesMesh";
 import { Mesh } from "@babylonjs/core/Meshes/mesh";
 import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder";
 import type { TransformNode } from "@babylonjs/core/Meshes/transformNode";
 import { Scene } from "@babylonjs/core/scene";
 
+import { createCameraRoutePlayer } from "../camera-routes/cameraRoutePlayer";
+import type { CameraRouteDefinition, CameraRoutePoint } from "../camera-routes/cameraRouteTypes";
 import { createDevelopmentCamera } from "../engine/developmentCamera";
 import { createAssetDefinitionMap, getAssetLabel, loadAssetDefinitions } from "../generation/assetCatalog";
 import { loadNatureKitAssetLibrary } from "../generation/NatureKitAssetLoader";
@@ -40,9 +43,13 @@ import { createBuilderSceneState } from "./sceneBuilderState";
 import type {
   BuilderLayoutRecord,
   BuilderPaletteItem,
+  BuilderRouteEditState,
+  BuilderRoutePointMoveDirection,
+  BuilderRouteSettingsPatch,
   BuilderSceneSnapshot,
   BuilderSelectedObjectSnapshot,
   BuilderVector3,
+  BuilderWorldCameraRoutesMetadata,
   BuilderWorldMetadata
 } from "./builderTypes";
 import { createSelectionController } from "./selectionController";
@@ -77,6 +84,19 @@ export type BuilderTransformMode = "move" | "rotate" | "scale";
 
 export interface SceneBuilderController {
   scene: Scene;
+  setRouteModeEnabled: (enabled: boolean) => void;
+  getRouteEditState: () => BuilderRouteEditState;
+  createRoute: (name?: string) => string | null;
+  selectRoute: (routeId: string | null) => void;
+  deleteRoute: (routeId: string) => boolean;
+  setDefaultRoute: (routeId: string | null) => void;
+  addPointFromCurrentCamera: (dwellMs?: number) => boolean;
+  selectRoutePoint: (pointIndex: number | null) => void;
+  removePoint: (pointIndex: number) => boolean;
+  movePoint: (pointIndex: number, direction: BuilderRoutePointMoveDirection) => boolean;
+  updateRouteSettings: (patch: BuilderRouteSettingsPatch) => boolean;
+  previewSelectedRoute: () => boolean;
+  stopRoutePreview: (options?: { resetToStart?: boolean }) => void;
   deleteSelectedObject: () => void;
   deleteObjectById: (objectId: string) => void;
   duplicateSelectedObject: () => Promise<void>;
@@ -139,7 +159,15 @@ interface BuilderGizmoInteractionState {
   objectId: string;
 }
 
+interface RouteOverlayMaterials {
+  defaultPoint: StandardMaterial;
+  selectedPoint: StandardMaterial;
+}
+
 const HISTORY_LIMIT = 100;
+const ROUTE_POINT_SPHERE_SIZE = 0.5;
+const ROUTE_POINT_SELECTED_SPHERE_SIZE = 0.78;
+const ROUTE_DEFAULT_DURATION_MS = 7000;
 
 export async function createSceneBuilder({
   canvas,
@@ -164,6 +192,15 @@ export async function createSceneBuilder({
   let undoStack: BuilderHistorySnapshot[] = [];
   let redoStack: BuilderHistorySnapshot[] = [];
   let historyRestoreInFlight = false;
+  let routeModeEnabled = false;
+  let selectedRouteId: string | null = null;
+  let selectedRoutePointIndex: number | null = null;
+  let routePreviewPlaying = false;
+  let routePreviewCameraNavigationBefore: boolean | null = null;
+  let routeOverlayMaterials: RouteOverlayMaterials | null = null;
+  let routeOverlayPointMeshes: Mesh[] = [];
+  let routeOverlayLine: LinesMesh | null = null;
+  let routeOverlayLookAtLine: LinesMesh | null = null;
 
   scene.clearColor = new Color4(0.79, 0.87, 0.92, 1);
   scene.ambientColor = new Color3(0.2, 0.24, 0.22);
@@ -248,6 +285,280 @@ export async function createSceneBuilder({
   }
 
   logSceneSnapshot("init");
+
+  const cloneCameraRoute = (route: CameraRouteDefinition): CameraRouteDefinition => ({
+    id: route.id,
+    name: route.name,
+    loop: route.loop,
+    timing: route.timing.mode === "duration"
+      ? {
+          mode: "duration",
+          totalDurationMs: route.timing.totalDurationMs
+        }
+      : {
+          mode: "speed",
+          unitsPerSecond: route.timing.unitsPerSecond
+        },
+    easing: route.easing,
+    points: route.points.map((point) => ({
+      position: [...point.position] as [number, number, number],
+      lookAt: [...point.lookAt] as [number, number, number],
+      dwellMs: point.dwellMs
+    }))
+  });
+
+  const getCameraRoutesMetadata = (): BuilderWorldCameraRoutesMetadata | undefined => state.layoutMetadata?.cameraRoutes;
+
+  const cleanupEmptyMetadata = (): void => {
+    const metadata = state.layoutMetadata;
+    if (!metadata) {
+      return;
+    }
+
+    if (!metadata.cameraRoutes) {
+      state.layoutMetadata = undefined;
+    }
+  };
+
+  const ensureLayoutMetadata = (): BuilderWorldMetadata => {
+    if (!state.layoutMetadata) {
+      state.layoutMetadata = {};
+    }
+    return state.layoutMetadata;
+  };
+
+  const ensureCameraRoutesMetadata = (): BuilderWorldCameraRoutesMetadata => {
+    const metadata = ensureLayoutMetadata();
+    if (!metadata.cameraRoutes) {
+      metadata.cameraRoutes = {
+        routes: []
+      };
+    }
+    return metadata.cameraRoutes;
+  };
+
+  const getSelectedRouteMetadata = (): CameraRouteDefinition | null => {
+    const metadata = getCameraRoutesMetadata();
+    if (!metadata || !selectedRouteId) {
+      return null;
+    }
+
+    return metadata.routes.find((route) => route.id === selectedRouteId) ?? null;
+  };
+
+  const normalizeSelectedPointIndex = (): void => {
+    const selectedRoute = getSelectedRouteMetadata();
+    if (!selectedRoute || selectedRoute.points.length === 0) {
+      selectedRoutePointIndex = null;
+      return;
+    }
+
+    if (selectedRoutePointIndex === null) {
+      return;
+    }
+
+    if (selectedRoutePointIndex < 0 || selectedRoutePointIndex >= selectedRoute.points.length) {
+      selectedRoutePointIndex = selectedRoute.points.length - 1;
+    }
+  };
+
+  const reconcileRouteSelection = (): void => {
+    const metadata = getCameraRoutesMetadata();
+    if (!metadata || metadata.routes.length === 0) {
+      selectedRouteId = null;
+      selectedRoutePointIndex = null;
+      return;
+    }
+
+    const selectedRouteExists = selectedRouteId
+      ? metadata.routes.some((route) => route.id === selectedRouteId)
+      : false;
+    if (!selectedRouteExists) {
+      selectedRouteId = metadata.routes[0]?.id ?? null;
+    }
+
+    if (metadata.defaultRouteId && !metadata.routes.some((route) => route.id === metadata.defaultRouteId)) {
+      metadata.defaultRouteId = metadata.routes[0]?.id;
+    }
+
+    normalizeSelectedPointIndex();
+  };
+
+  const createRouteOverlayMaterials = (): RouteOverlayMaterials => {
+    const defaultPointMaterial = new StandardMaterial("builder-route-point-material", scene);
+    defaultPointMaterial.disableLighting = true;
+    defaultPointMaterial.emissiveColor = new Color3(0.88, 0.73, 0.18);
+    defaultPointMaterial.diffuseColor = new Color3(0.88, 0.73, 0.18);
+    defaultPointMaterial.specularColor = Color3.Black();
+
+    const selectedPointMaterial = new StandardMaterial("builder-route-point-selected-material", scene);
+    selectedPointMaterial.disableLighting = true;
+    selectedPointMaterial.emissiveColor = new Color3(0.2, 0.86, 0.98);
+    selectedPointMaterial.diffuseColor = new Color3(0.2, 0.86, 0.98);
+    selectedPointMaterial.specularColor = Color3.Black();
+
+    return {
+      defaultPoint: defaultPointMaterial,
+      selectedPoint: selectedPointMaterial
+    };
+  };
+
+  const ensureRouteOverlayMaterials = (): RouteOverlayMaterials => {
+    if (!routeOverlayMaterials) {
+      routeOverlayMaterials = createRouteOverlayMaterials();
+    }
+    return routeOverlayMaterials;
+  };
+
+  const disposeRouteOverlay = (): void => {
+    for (const mesh of routeOverlayPointMeshes) {
+      mesh.dispose(false, true);
+    }
+    routeOverlayPointMeshes = [];
+    routeOverlayLine?.dispose(false, true);
+    routeOverlayLine = null;
+    routeOverlayLookAtLine?.dispose(false, true);
+    routeOverlayLookAtLine = null;
+  };
+
+  const updateRouteOverlay = (): void => {
+    disposeRouteOverlay();
+
+    if (!routeModeEnabled) {
+      return;
+    }
+
+    const selectedRoute = getSelectedRouteMetadata();
+    if (!selectedRoute || selectedRoute.points.length === 0) {
+      return;
+    }
+
+    const materials = ensureRouteOverlayMaterials();
+    const pathPoints: Vector3[] = [];
+    selectedRoute.points.forEach((point, pointIndex) => {
+      const pointPosition = new Vector3(point.position[0], point.position[1], point.position[2]);
+      pathPoints.push(pointPosition);
+      const isSelectedPoint = selectedRoutePointIndex === pointIndex;
+      const sphere = MeshBuilder.CreateSphere(
+        `builder-route-point-${selectedRoute.id}-${pointIndex}`,
+        {
+          diameter: isSelectedPoint ? ROUTE_POINT_SELECTED_SPHERE_SIZE : ROUTE_POINT_SPHERE_SIZE,
+          segments: 8
+        },
+        scene
+      );
+      sphere.position.copyFrom(pointPosition);
+      sphere.material = isSelectedPoint ? materials.selectedPoint : materials.defaultPoint;
+      sphere.isPickable = false;
+      sphere.alwaysSelectAsActiveMesh = true;
+      sphere.renderingGroupId = 2;
+      routeOverlayPointMeshes.push(sphere);
+    });
+
+    if (pathPoints.length >= 2) {
+      routeOverlayLine = MeshBuilder.CreateLines(
+        "builder-route-path-line",
+        {
+          points: pathPoints
+        },
+        scene
+      );
+      routeOverlayLine.color = new Color3(0.32, 0.78, 0.96);
+      routeOverlayLine.isPickable = false;
+      routeOverlayLine.alwaysSelectAsActiveMesh = true;
+      routeOverlayLine.renderingGroupId = 2;
+    }
+
+    if (selectedRoutePointIndex !== null) {
+      const selectedPoint = selectedRoute.points[selectedRoutePointIndex];
+      if (selectedPoint) {
+        routeOverlayLookAtLine = MeshBuilder.CreateLines(
+          "builder-route-look-at-line",
+          {
+            points: [
+              new Vector3(selectedPoint.position[0], selectedPoint.position[1], selectedPoint.position[2]),
+              new Vector3(selectedPoint.lookAt[0], selectedPoint.lookAt[1], selectedPoint.lookAt[2])
+            ]
+          },
+          scene
+        );
+        routeOverlayLookAtLine.color = new Color3(0.98, 0.35, 0.52);
+        routeOverlayLookAtLine.isPickable = false;
+        routeOverlayLookAtLine.alwaysSelectAsActiveMesh = true;
+        routeOverlayLookAtLine.renderingGroupId = 2;
+      }
+    }
+  };
+
+  const stopRoutePreviewInternal = (
+    options: { resetToStart?: boolean; statusMessage?: string; notifyAfter?: boolean } = {}
+  ): void => {
+    routePlayer.stop({
+      resetToStart: options.resetToStart
+    });
+    if (routePreviewCameraNavigationBefore !== null) {
+      developmentCamera.setNavigationEnabled(routePreviewCameraNavigationBefore);
+      routePreviewCameraNavigationBefore = null;
+    }
+    if (!routePreviewPlaying && !options.statusMessage) {
+      return;
+    }
+    routePreviewPlaying = false;
+    if (options.statusMessage) {
+      state.statusMessage = options.statusMessage;
+    }
+    if (options.notifyAfter !== false) {
+      notify();
+    }
+  };
+
+  const routePlayer = createCameraRoutePlayer({
+    scene,
+    camera: developmentCamera.camera,
+    onRouteComplete: () => {
+      stopRoutePreviewInternal({
+        statusMessage: "Route preview completed."
+      });
+    }
+  });
+
+  const cloneRouteEditState = (): BuilderRouteEditState => {
+    const metadata = getCameraRoutesMetadata();
+    return {
+      routeModeEnabled,
+      selectedRouteId,
+      selectedPointIndex: selectedRoutePointIndex,
+      isPreviewPlaying: routePreviewPlaying && routePlayer.isPlaying(),
+      defaultRouteId: metadata?.defaultRouteId ?? null,
+      routes: metadata?.routes.map((route) => cloneCameraRoute(route)) ?? []
+    };
+  };
+
+  const applyRouteMetadataChange = (
+    mutator: (metadata: BuilderWorldCameraRoutesMetadata) => boolean,
+    statusMessage: string
+  ): boolean => {
+    const beforeSnapshot = captureHistorySnapshot();
+    const metadata = ensureCameraRoutesMetadata();
+    const didChange = mutator(metadata);
+    if (!didChange) {
+      cleanupEmptyMetadata();
+      return false;
+    }
+
+    pushUndoSnapshot(beforeSnapshot);
+    reconcileRouteSelection();
+    updateRouteOverlay();
+    if (routePreviewPlaying) {
+      stopRoutePreviewInternal({
+        statusMessage: "Route preview stopped because the route was updated.",
+        notifyAfter: false
+      });
+    }
+    state.statusMessage = statusMessage;
+    notify();
+    return true;
+  };
 
   const notify = (): void => {
     for (const listener of listeners) {
@@ -448,6 +759,13 @@ export async function createSceneBuilder({
   });
 
   const setCameraNavigationEnabled = (enabled: boolean): void => {
+    if (routePreviewPlaying && enabled) {
+      stopRoutePreviewInternal({
+        statusMessage: "Route preview canceled by camera navigation."
+      });
+      return;
+    }
+
     if (developmentCamera.isNavigationEnabled() === enabled) {
       return;
     }
@@ -635,6 +953,10 @@ export async function createSceneBuilder({
   };
 
   const clearAllObjects = (): void => {
+    if (routePreviewPlaying) {
+      stopRoutePreviewInternal({ notifyAfter: false });
+    }
+
     for (const entry of placedObjects.values()) {
       // Instances can share material/texture resources from their source container.
       // Avoid disposing shared materials during object delete/undo/redo restores.
@@ -657,6 +979,7 @@ export async function createSceneBuilder({
   ): Promise<boolean> => {
     clearAllObjects();
     state.layoutMetadata = cloneBuilderWorldMetadata(snapshot.layoutMetadata);
+    reconcileRouteSelection();
 
     let skippedCount = 0;
     let firstObjectId: string | null = null;
@@ -679,6 +1002,7 @@ export async function createSceneBuilder({
       ? ` ${skippedCount} object${skippedCount === 1 ? "" : "s"} could not be restored.`
       : "";
     state.statusMessage = `${options?.statusMessage ?? "History restored."}${statusSuffix}`;
+    updateRouteOverlay();
     setSelection(fallbackSelectionId);
     return true;
   };
@@ -691,6 +1015,8 @@ export async function createSceneBuilder({
       const removedIds = await clearUploadedAssets();
       clearAllObjects();
       state.layoutMetadata = undefined;
+      reconcileRouteSelection();
+      updateRouteOverlay();
       nextObjectNumber = 1;
       clearHistory();
 
@@ -879,6 +1205,359 @@ export async function createSceneBuilder({
     pushUndoSnapshot(beforeSnapshot);
   };
 
+  const toRouteVector = (value: Vector3): [number, number, number] => [
+    Number(value.x.toFixed(3)),
+    Number(value.y.toFixed(3)),
+    Number(value.z.toFixed(3))
+  ];
+
+  const sanitizeRouteName = (name: string | undefined, fallback: string): string => {
+    const trimmed = name?.trim();
+    return trimmed && trimmed.length > 0 ? trimmed : fallback;
+  };
+
+  const createUniqueRouteName = (metadata: BuilderWorldCameraRoutesMetadata): string => {
+    let routeNumber = metadata.routes.length + 1;
+    while (metadata.routes.some((route) => route.name === `Route ${routeNumber}`)) {
+      routeNumber += 1;
+    }
+    return `Route ${routeNumber}`;
+  };
+
+  const createUniqueRouteId = (metadata: BuilderWorldCameraRoutesMetadata, preferredBase: string): string => {
+    const sanitizedBase = preferredBase
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "") || "route";
+    let candidate = sanitizedBase;
+    let suffix = 2;
+    while (metadata.routes.some((route) => route.id === candidate)) {
+      candidate = `${sanitizedBase}-${suffix}`;
+      suffix += 1;
+    }
+    return candidate;
+  };
+
+  const setRouteModeEnabled = (enabled: boolean): void => {
+    if (routeModeEnabled === enabled) {
+      return;
+    }
+
+    routeModeEnabled = enabled;
+    if (!enabled) {
+      stopRoutePreviewInternal({
+        statusMessage: "Route mode disabled.",
+        notifyAfter: false
+      });
+      selectedRoutePointIndex = null;
+    } else {
+      reconcileRouteSelection();
+      state.statusMessage = "Route mode enabled. Use camera navigation mode to compose viewpoints, then capture points.";
+    }
+    updateRouteOverlay();
+    notify();
+  };
+
+  const getRouteEditState = (): BuilderRouteEditState => cloneRouteEditState();
+
+  const selectRoute = (routeId: string | null): void => {
+    const metadata = getCameraRoutesMetadata();
+    if (!metadata || metadata.routes.length === 0) {
+      selectedRouteId = null;
+      selectedRoutePointIndex = null;
+      updateRouteOverlay();
+      notify();
+      return;
+    }
+
+    if (routeId === null) {
+      selectedRouteId = metadata.routes[0]?.id ?? null;
+    } else if (metadata.routes.some((route) => route.id === routeId)) {
+      selectedRouteId = routeId;
+    } else {
+      return;
+    }
+
+    selectedRoutePointIndex = null;
+    normalizeSelectedPointIndex();
+    updateRouteOverlay();
+    notify();
+  };
+
+  const createRoute = (name?: string): string | null => {
+    let createdRouteId: string | null = null;
+    const didCreateRoute = applyRouteMetadataChange(
+      (metadata) => {
+        const nextName = sanitizeRouteName(name, createUniqueRouteName(metadata));
+        const nextId = createUniqueRouteId(metadata, nextName);
+        const nextRoute: CameraRouteDefinition = {
+          id: nextId,
+          name: nextName,
+          loop: false,
+          timing: {
+            mode: "duration",
+            totalDurationMs: ROUTE_DEFAULT_DURATION_MS
+          },
+          easing: "easeInOutSine",
+          points: []
+        };
+        metadata.routes.push(nextRoute);
+        if (!metadata.defaultRouteId) {
+          metadata.defaultRouteId = nextId;
+        }
+        selectedRouteId = nextId;
+        selectedRoutePointIndex = null;
+        createdRouteId = nextId;
+        return true;
+      },
+      "Created camera route."
+    );
+
+    return didCreateRoute ? createdRouteId : null;
+  };
+
+  const deleteRoute = (routeId: string): boolean => applyRouteMetadataChange(
+    (metadata) => {
+      const routeIndex = metadata.routes.findIndex((route) => route.id === routeId);
+      if (routeIndex < 0) {
+        return false;
+      }
+
+      metadata.routes.splice(routeIndex, 1);
+      if (metadata.defaultRouteId === routeId) {
+        metadata.defaultRouteId = metadata.routes[0]?.id;
+      }
+
+      if (selectedRouteId === routeId) {
+        selectedRouteId = metadata.routes[routeIndex]?.id ?? metadata.routes[Math.max(0, routeIndex - 1)]?.id ?? null;
+        selectedRoutePointIndex = null;
+      }
+
+      if (metadata.routes.length === 0) {
+        const layoutMetadata = ensureLayoutMetadata();
+        delete layoutMetadata.cameraRoutes;
+        cleanupEmptyMetadata();
+      }
+
+      return true;
+    },
+    "Deleted camera route."
+  );
+
+  const setDefaultRoute = (routeId: string | null): void => {
+    applyRouteMetadataChange(
+      (metadata) => {
+        if (routeId === null) {
+          if (!metadata.defaultRouteId) {
+            return false;
+          }
+
+          delete metadata.defaultRouteId;
+          return true;
+        }
+
+        if (!metadata.routes.some((route) => route.id === routeId)) {
+          return false;
+        }
+
+        if (metadata.defaultRouteId === routeId) {
+          return false;
+        }
+
+        metadata.defaultRouteId = routeId;
+        return true;
+      },
+      routeId ? "Updated default camera route." : "Cleared default camera route."
+    );
+  };
+
+  const selectRoutePoint = (pointIndex: number | null): void => {
+    const route = getSelectedRouteMetadata();
+    if (!route) {
+      selectedRoutePointIndex = null;
+      updateRouteOverlay();
+      notify();
+      return;
+    }
+
+    if (pointIndex === null) {
+      selectedRoutePointIndex = null;
+    } else if (pointIndex >= 0 && pointIndex < route.points.length) {
+      selectedRoutePointIndex = pointIndex;
+    } else {
+      return;
+    }
+
+    updateRouteOverlay();
+    notify();
+  };
+
+  const addPointFromCurrentCamera = (dwellMs = 0): boolean => applyRouteMetadataChange(
+    () => {
+      const route = getSelectedRouteMetadata();
+      if (!route) {
+        return false;
+      }
+
+      const cameraPosition = developmentCamera.camera.position;
+      const cameraTarget = developmentCamera.camera.getTarget();
+      const nextPoint: CameraRoutePoint = {
+        position: toRouteVector(cameraPosition),
+        lookAt: toRouteVector(cameraTarget),
+        dwellMs: Math.max(0, Number.isFinite(dwellMs) ? dwellMs : 0)
+      };
+      route.points.push(nextPoint);
+      selectedRoutePointIndex = route.points.length - 1;
+      return true;
+    },
+    "Captured camera route point."
+  );
+
+  const removePoint = (pointIndex: number): boolean => applyRouteMetadataChange(
+    () => {
+      const route = getSelectedRouteMetadata();
+      if (!route || pointIndex < 0 || pointIndex >= route.points.length) {
+        return false;
+      }
+
+      route.points.splice(pointIndex, 1);
+      if (route.points.length === 0) {
+        selectedRoutePointIndex = null;
+      } else if (selectedRoutePointIndex === null) {
+        selectedRoutePointIndex = Math.min(pointIndex, route.points.length - 1);
+      } else if (selectedRoutePointIndex > pointIndex) {
+        selectedRoutePointIndex -= 1;
+      } else if (selectedRoutePointIndex >= route.points.length) {
+        selectedRoutePointIndex = route.points.length - 1;
+      }
+
+      return true;
+    },
+    "Removed camera route point."
+  );
+
+  const movePoint = (pointIndex: number, direction: BuilderRoutePointMoveDirection): boolean => applyRouteMetadataChange(
+    () => {
+      const route = getSelectedRouteMetadata();
+      if (!route) {
+        return false;
+      }
+
+      const swapIndex = direction === "up" ? pointIndex - 1 : pointIndex + 1;
+      if (pointIndex < 0 || swapIndex < 0 || pointIndex >= route.points.length || swapIndex >= route.points.length) {
+        return false;
+      }
+
+      const [point] = route.points.splice(pointIndex, 1);
+      if (!point) {
+        return false;
+      }
+
+      route.points.splice(swapIndex, 0, point);
+      if (selectedRoutePointIndex === pointIndex) {
+        selectedRoutePointIndex = swapIndex;
+      } else if (selectedRoutePointIndex === swapIndex) {
+        selectedRoutePointIndex = pointIndex;
+      }
+      return true;
+    },
+    "Reordered camera route point."
+  );
+
+  const updateRouteSettings = (patch: BuilderRouteSettingsPatch): boolean => applyRouteMetadataChange(
+    () => {
+      const route = getSelectedRouteMetadata();
+      if (!route) {
+        return false;
+      }
+
+      let didChange = false;
+      if (typeof patch.name === "string") {
+        const nextName = patch.name.trim();
+        if (nextName && nextName !== route.name) {
+          route.name = nextName;
+          didChange = true;
+        }
+      }
+
+      if (typeof patch.loop === "boolean" && patch.loop !== route.loop) {
+        route.loop = patch.loop;
+        didChange = true;
+      }
+
+      if (patch.easing && patch.easing !== route.easing) {
+        route.easing = patch.easing;
+        didChange = true;
+      }
+
+      if (patch.timing) {
+        if (patch.timing.mode === "duration") {
+          const duration = Math.max(0, patch.timing.totalDurationMs);
+          if (
+            route.timing.mode !== "duration" ||
+            route.timing.totalDurationMs !== duration
+          ) {
+            route.timing = {
+              mode: "duration",
+              totalDurationMs: duration
+            };
+            didChange = true;
+          }
+        } else {
+          const speed = Math.max(0.001, patch.timing.unitsPerSecond);
+          if (
+            route.timing.mode !== "speed" ||
+            route.timing.unitsPerSecond !== speed
+          ) {
+            route.timing = {
+              mode: "speed",
+              unitsPerSecond: speed
+            };
+            didChange = true;
+          }
+        }
+      }
+
+      return didChange;
+    },
+    "Updated camera route settings."
+  );
+
+  const previewSelectedRoute = (): boolean => {
+    const route = getSelectedRouteMetadata();
+    if (!route) {
+      state.statusMessage = "Create or select a camera route first.";
+      notify();
+      return false;
+    }
+
+    if (route.points.length < 2) {
+      state.statusMessage = "Add at least two camera points before previewing.";
+      notify();
+      return false;
+    }
+
+    stopRoutePreviewInternal({ notifyAfter: false });
+    routePlayer.setRoute(route);
+    routePreviewCameraNavigationBefore = developmentCamera.isNavigationEnabled();
+    developmentCamera.setNavigationEnabled(false);
+    routePlayer.play({ restart: true });
+    routePreviewPlaying = routePlayer.isPlaying();
+    state.statusMessage = routePreviewPlaying
+      ? `Previewing route "${route.name}".`
+      : `Could not preview route "${route.name}".`;
+    notify();
+    return routePreviewPlaying;
+  };
+
+  const stopRoutePreview = (options?: { resetToStart?: boolean }): void => {
+    stopRoutePreviewInternal({
+      resetToStart: options?.resetToStart,
+      statusMessage: "Route preview stopped."
+    });
+  };
+
   const deleteObjectByIdInternal = (objectId: string, options?: { recordHistory?: boolean }): boolean => {
     if (historyRestoreInFlight) {
       return false;
@@ -1059,6 +1738,7 @@ export async function createSceneBuilder({
     const beforeSnapshot = options?.recordHistory === false ? null : captureHistorySnapshot();
     clearAllObjects();
     state.layoutMetadata = cloneBuilderWorldMetadata(result.value.metadata);
+    reconcileRouteSelection();
 
     let importedCount = 0;
     let skippedCount = 0;
@@ -1104,6 +1784,7 @@ export async function createSceneBuilder({
     if (beforeSnapshot) {
       pushUndoSnapshot(beforeSnapshot);
     }
+    updateRouteOverlay();
     setSelection(firstImportedObjectId);
 
     return {
@@ -1549,6 +2230,12 @@ export async function createSceneBuilder({
         delete debugWindow.__skillGardenBuilderDebug;
       }
     }
+    stopRoutePreviewInternal({ notifyAfter: false });
+    routePlayer.dispose();
+    disposeRouteOverlay();
+    routeOverlayMaterials?.defaultPoint.dispose(false, true);
+    routeOverlayMaterials?.selectedPoint.dispose(false, true);
+    routeOverlayMaterials = null;
     clearAllObjects();
     assetLibrary.dispose();
     gizmoManager.dispose();
@@ -1562,6 +2249,19 @@ export async function createSceneBuilder({
 
   return {
     scene,
+    setRouteModeEnabled,
+    getRouteEditState,
+    createRoute,
+    selectRoute,
+    deleteRoute,
+    setDefaultRoute,
+    addPointFromCurrentCamera,
+    selectRoutePoint,
+    removePoint,
+    movePoint,
+    updateRouteSettings,
+    previewSelectedRoute,
+    stopRoutePreview,
     deleteSelectedObject,
     deleteObjectById,
     duplicateSelectedObject,

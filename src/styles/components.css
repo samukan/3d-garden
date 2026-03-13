@@ -528,6 +528,80 @@
   max-height: 45vh;
 }
 
+.builder-camera-routes {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.builder-route-settings-grid {
+  margin-top: var(--space-2);
+}
+
+.builder-field-inline {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.builder-field-inline input[type="checkbox"] {
+  width: 1.1rem;
+  height: 1.1rem;
+  accent-color: var(--color-accent-strong);
+}
+
+.builder-route-points {
+  margin-top: var(--space-2);
+  display: grid;
+  gap: var(--space-2);
+}
+
+.builder-route-point-item {
+  padding: var(--space-3);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-control);
+  background: var(--color-surface-2);
+  display: grid;
+  gap: var(--space-2);
+}
+
+.builder-route-point-item.is-selected {
+  border-color: color-mix(in srgb, var(--color-accent) 70%, transparent);
+  background: var(--color-accent-soft);
+}
+
+.builder-route-point-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.builder-route-point-select {
+  min-height: 2.1rem;
+  padding: 0 var(--space-3);
+}
+
+.builder-route-point-meta {
+  font-size: var(--font-size-12);
+  color: var(--color-text-muted);
+}
+
+.builder-route-point-value {
+  margin: 0;
+  font-size: var(--font-size-13);
+  color: var(--color-text-secondary);
+}
+
+.builder-route-point-value strong {
+  color: var(--color-text-primary);
+}
+
+.builder-route-point-actions {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-2);
+}
+
 .builder-library-tools {
   margin-top: var(--space-3);
 }
@@ -839,7 +913,8 @@
   .builder-action-row-split,
   .builder-action-row-upload-tools,
   .builder-panel-tabs,
-  .builder-control-grid-move {
+  .builder-control-grid-move,
+  .builder-route-point-actions {
     grid-template-columns: 1fr;
   }
 

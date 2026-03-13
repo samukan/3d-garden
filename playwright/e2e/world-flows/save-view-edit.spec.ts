@@ -91,56 +91,46 @@ test("preserves metadata camera routes through save and reopen flow", async ({ p
   await page.locator("#builder-advanced-tools-toggle").click();
   await expect(page.locator("#builder-advanced-tools-panel")).toBeVisible();
 
-  const metadataLayout = JSON.stringify(
-    {
-      version: 1,
-      objects: [
-        {
-          id: "builder-object-1",
-          assetId: "tree",
-          position: { x: 0, y: 0, z: 0 },
-          rotationY: 0,
-          scale: 1
-        }
-      ],
-      metadata: {
-        cameraRoutes: {
-          defaultRouteId: "builder-saved-metadata-route",
-          routes: [
-            {
-              id: "builder-saved-metadata-route",
-              name: "Saved Metadata Route",
-              loop: false,
-              timing: {
-                mode: "duration",
-                totalDurationMs: 3200
-              },
-              easing: "easeInOutSine",
-              points: [
-                {
-                  position: [20, 11, -14],
-                  lookAt: [0, 2, 0],
-                  dwellMs: 250
-                },
-                {
-                  position: [9, 9, -9],
-                  lookAt: [1, 1.7, 1.2]
-                }
-              ]
-            }
-          ]
-        }
-      }
-    },
-    null,
-    2
-  );
-
-  await page.locator("#builder-layout-json").fill(metadataLayout);
-  await page.locator("#builder-import").click();
-  await expect(page.locator("#builder-status")).toContainText("Imported 1 object", {
+  await page.locator("#builder-palette button").first().click();
+  await page.locator("#builder-place-asset").click();
+  await expect(page.locator("#builder-status")).toContainText("Placed", {
     timeout: 10_000
   });
+
+  await page.locator("#builder-advanced-tools-toggle").click();
+  await expect(page.locator("#builder-advanced-tools-panel")).toBeVisible();
+  await page.locator("#builder-route-mode-toggle").click();
+  await expect(page.locator("#builder-route-mode-toggle")).toHaveAttribute("aria-pressed", "true");
+
+  await page.locator("#builder-route-create").click();
+  await expect(page.locator("#builder-route-select option")).toHaveCount(1);
+  await page.locator("#builder-route-name").fill("Saved Metadata Route");
+  await page.locator("#builder-route-name").dispatchEvent("change");
+
+  await page.locator("#builder-route-add-point").click();
+
+  await page.locator("#builder-camera-nav-toggle").click();
+  await page.locator("#renderCanvas").hover();
+  await page.mouse.wheel(0, 420);
+  await page.locator("#builder-advanced-tools-toggle").click();
+  await expect(page.locator("#builder-advanced-tools-panel")).toBeVisible();
+  await page.locator("#builder-route-add-point").click();
+
+  await page.locator("#builder-export").click();
+  const authoredLayout = await page.locator("#builder-layout-json").inputValue();
+  const parsedAuthoredLayout = JSON.parse(authoredLayout) as {
+    metadata?: {
+      cameraRoutes?: {
+        defaultRouteId?: string;
+        routes?: Array<{ id: string; points?: unknown[] }>;
+      };
+    };
+  };
+  const authoredRoutes = parsedAuthoredLayout.metadata?.cameraRoutes?.routes ?? [];
+  const authoredRouteId = authoredRoutes[0]?.id ?? null;
+  expect(authoredRouteId).toBeTruthy();
+  expect(parsedAuthoredLayout.metadata?.cameraRoutes?.defaultRouteId).toBe(authoredRouteId);
+  expect(authoredRoutes[0]?.points?.length).toBe(2);
 
   const worldName = `Metadata Roundtrip ${Date.now()}`;
   await page.locator("#builder-world-name").fill(worldName);
@@ -170,7 +160,7 @@ test("preserves metadata camera routes through save and reopen flow", async ({ p
     };
     return parsedLayout.metadata?.cameraRoutes?.defaultRouteId ?? null;
   }, SAVED_WORLDS_KEY);
-  expect(savedLayoutRouteId).toBe("builder-saved-metadata-route");
+  expect(savedLayoutRouteId).toBe(authoredRouteId);
 
   await page.locator("#builder-view-world").click();
   await expect(page.locator("#viewer-panel")).toHaveAttribute("data-viewer-load-state", "ready");
@@ -180,7 +170,7 @@ test("preserves metadata camera routes through save and reopen flow", async ({ p
         (event) =>
           event.includes("viewer-cinematic:start") &&
           event.includes("source: world-metadata") &&
-          event.includes("routeId: builder-saved-metadata-route")
+          event.includes(`routeId: ${authoredRouteId}`)
       ),
     {
       timeout: 12_000
@@ -199,10 +189,12 @@ test("preserves metadata camera routes through save and reopen flow", async ({ p
     metadata?: {
       cameraRoutes?: {
         defaultRouteId?: string;
+        routes?: Array<{ points?: unknown[] }>;
       };
     };
   };
-  expect(parsedReopenedLayout.metadata?.cameraRoutes?.defaultRouteId).toBe("builder-saved-metadata-route");
+  expect(parsedReopenedLayout.metadata?.cameraRoutes?.defaultRouteId).toBe(authoredRouteId);
+  expect(parsedReopenedLayout.metadata?.cameraRoutes?.routes?.[0]?.points?.length).toBe(2);
 
   expect(
     pageErrors,

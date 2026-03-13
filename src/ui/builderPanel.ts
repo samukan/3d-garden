@@ -1,5 +1,5 @@
 import type { BuilderTransformMode, SceneBuilderController } from "../builder/sceneBuilder";
-import type { BuilderPaletteItem, BuilderSceneSnapshot } from "../builder/builderTypes";
+import type { BuilderPaletteItem, BuilderRouteEditState, BuilderSceneSnapshot } from "../builder/builderTypes";
 import { DEFAULT_UPLOADED_ASSET_CATEGORY, type AssetId } from "../generation/natureKitAssetManifest";
 import { escapeHtml } from "../utils/html";
 
@@ -65,6 +65,62 @@ const topBarMarkup = `
       <button id="builder-download-world-json" class="ui-button builder-button builder-button-block" type="button">Download JSON</button>
       <button id="builder-upload-world-json" class="ui-button builder-button builder-button-block" type="button">Upload JSON</button>
       <input id="builder-upload-world-json-input" type="file" accept=".json,application/json" hidden />
+    </div>
+    <div class="builder-panel-section builder-panel-section-tight builder-camera-routes">
+      <p class="builder-panel-kicker">Camera Routes</p>
+      <div class="builder-action-row builder-action-row-split">
+        <button id="builder-route-mode-toggle" class="ui-button builder-button builder-button-block" type="button" aria-pressed="false">Route Mode Off</button>
+        <button id="builder-route-create" class="ui-button builder-button builder-button-block" type="button">Create Route</button>
+      </div>
+      <div class="builder-action-row builder-action-row-split">
+        <button id="builder-route-add-point" class="ui-button builder-button builder-button-block" type="button">Add Current Camera Point</button>
+        <button id="builder-route-delete" class="ui-button builder-button builder-button-danger builder-button-block" type="button">Delete Route</button>
+      </div>
+      <label class="builder-field builder-advanced-tools-label" for="builder-route-select">
+        <span>Selected Route</span>
+        <select id="builder-route-select" class="builder-select"></select>
+      </label>
+      <label class="builder-field builder-advanced-tools-label" for="builder-route-default-select">
+        <span>Default Route</span>
+        <select id="builder-route-default-select" class="builder-select"></select>
+      </label>
+      <div class="builder-field-grid builder-route-settings-grid">
+        <label class="builder-field builder-field-full">
+          <span>Route Name</span>
+          <input id="builder-route-name" type="text" maxlength="80" />
+        </label>
+        <label class="builder-field builder-field-inline">
+          <span>Loop route</span>
+          <input id="builder-route-loop" type="checkbox" />
+        </label>
+        <label class="builder-field">
+          <span>Easing</span>
+          <select id="builder-route-easing" class="builder-select">
+            <option value="easeInOutSine">easeInOutSine</option>
+            <option value="linear">linear</option>
+          </select>
+        </label>
+        <label class="builder-field">
+          <span>Timing Mode</span>
+          <select id="builder-route-timing-mode" class="builder-select">
+            <option value="duration">Duration</option>
+            <option value="speed">Speed</option>
+          </select>
+        </label>
+        <label class="builder-field">
+          <span id="builder-route-timing-value-label">Duration (ms)</span>
+          <input id="builder-route-timing-value" type="number" min="0" step="100" />
+        </label>
+        <label class="builder-field">
+          <span>New Point Dwell (ms)</span>
+          <input id="builder-route-dwell-ms" type="number" min="0" step="50" value="0" />
+        </label>
+      </div>
+      <div class="builder-action-row builder-action-row-split">
+        <button id="builder-route-preview" class="ui-button builder-button builder-button-block" type="button">Preview Route</button>
+        <button id="builder-route-stop" class="ui-button builder-button builder-button-block" type="button">Stop Preview</button>
+      </div>
+      <div id="builder-route-points" class="builder-route-points"></div>
     </div>
     <label class="builder-textarea-label builder-advanced-tools-label" for="builder-layout-json">Manual JSON (advanced)</label>
     <textarea id="builder-layout-json" class="builder-textarea builder-advanced-tools-json" spellcheck="false"></textarea>
@@ -182,12 +238,18 @@ const MAX_LIBRARY_WIDTH = 520;
 const MOBILE_BREAKPOINT = 900;
 const MOVE_STEP = 0.25;
 const ROTATION_STEP = 15;
+const DEFAULT_ROUTE_DURATION_MS = 7000;
+const DEFAULT_ROUTE_SPEED = 3;
 
 type BuilderLibraryTab = "assets" | "scene";
 type UploadedAssetSortMode = "alpha" | "date-uploaded";
 
 function formatNumber(value: number): string {
   return Number(value.toFixed(3)).toString();
+}
+
+function formatTuple3(value: [number, number, number]): string {
+  return `${formatNumber(value[0])}, ${formatNumber(value[1])}, ${formatNumber(value[2])}`;
 }
 
 function getUploadedAssetTimestamp(value: string | null): number {
@@ -310,6 +372,22 @@ export function createBuilderPanel(
   const downloadWorldJsonButton = topBar.querySelector<HTMLButtonElement>("#builder-download-world-json");
   const uploadWorldJsonButton = topBar.querySelector<HTMLButtonElement>("#builder-upload-world-json");
   const uploadWorldJsonInput = topBar.querySelector<HTMLInputElement>("#builder-upload-world-json-input");
+  const routeModeToggleButton = topBar.querySelector<HTMLButtonElement>("#builder-route-mode-toggle");
+  const routeCreateButton = topBar.querySelector<HTMLButtonElement>("#builder-route-create");
+  const routeAddPointButton = topBar.querySelector<HTMLButtonElement>("#builder-route-add-point");
+  const routeDeleteButton = topBar.querySelector<HTMLButtonElement>("#builder-route-delete");
+  const routeSelect = topBar.querySelector<HTMLSelectElement>("#builder-route-select");
+  const routeDefaultSelect = topBar.querySelector<HTMLSelectElement>("#builder-route-default-select");
+  const routeNameInput = topBar.querySelector<HTMLInputElement>("#builder-route-name");
+  const routeLoopInput = topBar.querySelector<HTMLInputElement>("#builder-route-loop");
+  const routeEasingSelect = topBar.querySelector<HTMLSelectElement>("#builder-route-easing");
+  const routeTimingModeSelect = topBar.querySelector<HTMLSelectElement>("#builder-route-timing-mode");
+  const routeTimingValueLabel = topBar.querySelector<HTMLElement>("#builder-route-timing-value-label");
+  const routeTimingValueInput = topBar.querySelector<HTMLInputElement>("#builder-route-timing-value");
+  const routeDwellInput = topBar.querySelector<HTMLInputElement>("#builder-route-dwell-ms");
+  const routePreviewButton = topBar.querySelector<HTMLButtonElement>("#builder-route-preview");
+  const routeStopButton = topBar.querySelector<HTMLButtonElement>("#builder-route-stop");
+  const routePointsElement = topBar.querySelector<HTMLElement>("#builder-route-points");
   const saveWorldButton = topBar.querySelector<HTMLButtonElement>("#builder-save-world");
   const saveWorldAsButton = topBar.querySelector<HTMLButtonElement>("#builder-save-world-as");
   const viewWorldButton = topBar.querySelector<HTMLButtonElement>("#builder-view-world");
@@ -356,6 +434,22 @@ export function createBuilderPanel(
     !downloadWorldJsonButton ||
     !uploadWorldJsonButton ||
     !uploadWorldJsonInput ||
+    !routeModeToggleButton ||
+    !routeCreateButton ||
+    !routeAddPointButton ||
+    !routeDeleteButton ||
+    !routeSelect ||
+    !routeDefaultSelect ||
+    !routeNameInput ||
+    !routeLoopInput ||
+    !routeEasingSelect ||
+    !routeTimingModeSelect ||
+    !routeTimingValueLabel ||
+    !routeTimingValueInput ||
+    !routeDwellInput ||
+    !routePreviewButton ||
+    !routeStopButton ||
+    !routePointsElement ||
     !saveWorldButton ||
     !saveWorldAsButton ||
     !viewWorldButton ||
@@ -759,6 +853,164 @@ export function createBuilderPanel(
     renderCameraMode();
   };
 
+  const getSelectedRoute = (
+    routeEditState: BuilderRouteEditState
+  ) => routeEditState.routes.find((route) => route.id === routeEditState.selectedRouteId) ?? null;
+
+  const renderRouteTools = (): void => {
+    const routeEditState = sceneBuilder.getRouteEditState();
+    const selectedRoute = getSelectedRoute(routeEditState);
+    const routeModeEnabled = routeEditState.routeModeEnabled;
+    const hasRoutes = routeEditState.routes.length > 0;
+
+    routeModeToggleButton.setAttribute("aria-pressed", String(routeModeEnabled));
+    routeModeToggleButton.classList.toggle("builder-button-primary", routeModeEnabled);
+    routeModeToggleButton.textContent = routeModeEnabled ? "Route Mode On" : "Route Mode Off";
+
+    routeCreateButton.disabled = !routeModeEnabled;
+    routeSelect.disabled = !routeModeEnabled || !hasRoutes;
+    routeDeleteButton.disabled = !routeModeEnabled || !selectedRoute;
+    routeAddPointButton.disabled = !routeModeEnabled || !selectedRoute;
+    routePreviewButton.disabled = !routeModeEnabled || !selectedRoute || selectedRoute.points.length < 2 || routeEditState.isPreviewPlaying;
+    routeStopButton.disabled = !routeModeEnabled || !routeEditState.isPreviewPlaying;
+    routeDefaultSelect.disabled = !routeModeEnabled || !hasRoutes;
+
+    const routeOptions = hasRoutes
+      ? routeEditState.routes
+          .map(
+            (route) =>
+              `<option value="${escapeHtml(route.id)}"${route.id === routeEditState.selectedRouteId ? " selected" : ""}>${escapeHtml(route.name)}</option>`
+          )
+          .join("")
+      : `<option value="">No routes</option>`;
+    routeSelect.innerHTML = routeOptions;
+
+    const defaultOptions = [
+      `<option value="">No default route</option>`,
+      ...routeEditState.routes.map(
+        (route) =>
+          `<option value="${escapeHtml(route.id)}"${route.id === routeEditState.defaultRouteId ? " selected" : ""}>${escapeHtml(route.name)}</option>`
+      )
+    ];
+    routeDefaultSelect.innerHTML = defaultOptions.join("");
+
+    const routeInputsDisabled = !routeModeEnabled || !selectedRoute;
+    routeNameInput.disabled = routeInputsDisabled;
+    routeLoopInput.disabled = routeInputsDisabled;
+    routeEasingSelect.disabled = routeInputsDisabled;
+    routeTimingModeSelect.disabled = routeInputsDisabled;
+    routeTimingValueInput.disabled = routeInputsDisabled;
+    routeDwellInput.disabled = routeInputsDisabled;
+
+    if (!selectedRoute) {
+      routeNameInput.value = "";
+      routeLoopInput.checked = false;
+      routeEasingSelect.value = "easeInOutSine";
+      routeTimingModeSelect.value = "duration";
+      routeTimingValueLabel.textContent = "Duration (ms)";
+      routeTimingValueInput.value = String(DEFAULT_ROUTE_DURATION_MS);
+    } else {
+      routeNameInput.value = selectedRoute.name;
+      routeLoopInput.checked = selectedRoute.loop;
+      routeEasingSelect.value = selectedRoute.easing ?? "easeInOutSine";
+      routeTimingModeSelect.value = selectedRoute.timing.mode;
+      if (selectedRoute.timing.mode === "duration") {
+        routeTimingValueLabel.textContent = "Duration (ms)";
+        routeTimingValueInput.min = "0";
+        routeTimingValueInput.step = "100";
+        routeTimingValueInput.value = String(Math.round(selectedRoute.timing.totalDurationMs));
+      } else {
+        routeTimingValueLabel.textContent = "Speed (units/s)";
+        routeTimingValueInput.min = "0.1";
+        routeTimingValueInput.step = "0.1";
+        routeTimingValueInput.value = selectedRoute.timing.unitsPerSecond.toFixed(2);
+      }
+    }
+
+    if (!routeModeEnabled) {
+      routePointsElement.innerHTML = `
+        <div class="builder-empty-state">
+          <p class="builder-selection-title">Route mode is off</p>
+          <p class="builder-selection-meta">Enable route mode to capture camera points and preview routes.</p>
+        </div>
+      `;
+      return;
+    }
+
+    if (!selectedRoute) {
+      routePointsElement.innerHTML = `
+        <div class="builder-empty-state">
+          <p class="builder-selection-title">No route selected</p>
+          <p class="builder-selection-meta">Create a route to begin capturing camera points.</p>
+        </div>
+      `;
+      return;
+    }
+
+    if (selectedRoute.points.length === 0) {
+      routePointsElement.innerHTML = `
+        <div class="builder-empty-state">
+          <p class="builder-selection-title">No points yet</p>
+          <p class="builder-selection-meta">Move the camera, then click "Add Current Camera Point".</p>
+        </div>
+      `;
+      return;
+    }
+
+    routePointsElement.innerHTML = selectedRoute.points
+      .map((point, index) => {
+        const isSelected = routeEditState.selectedPointIndex === index;
+        const canMoveUp = index > 0;
+        const canMoveDown = index < selectedRoute.points.length - 1;
+        return `
+          <div class="builder-route-point-item${isSelected ? " is-selected" : ""}">
+            <div class="builder-route-point-header">
+              <button
+                class="ui-button builder-button builder-route-point-select"
+                type="button"
+                data-route-point-action="select"
+                data-route-point-index="${index}"
+              >
+                Point ${index + 1}
+              </button>
+              <span class="builder-route-point-meta">Dwell: ${Math.max(0, Math.round(point.dwellMs ?? 0))}ms</span>
+            </div>
+            <p class="builder-route-point-value"><strong>Position:</strong> ${escapeHtml(formatTuple3(point.position))}</p>
+            <p class="builder-route-point-value"><strong>LookAt:</strong> ${escapeHtml(formatTuple3(point.lookAt))}</p>
+            <div class="builder-route-point-actions">
+              <button
+                class="ui-button builder-button"
+                type="button"
+                data-route-point-action="up"
+                data-route-point-index="${index}"
+                ${canMoveUp ? "" : "disabled"}
+              >
+                Move Up
+              </button>
+              <button
+                class="ui-button builder-button"
+                type="button"
+                data-route-point-action="down"
+                data-route-point-index="${index}"
+                ${canMoveDown ? "" : "disabled"}
+              >
+                Move Down
+              </button>
+              <button
+                class="ui-button builder-button builder-button-danger"
+                type="button"
+                data-route-point-action="delete"
+                data-route-point-index="${index}"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        `;
+      })
+      .join("");
+  };
+
   const render = (): void => {
     const snapshot = sceneBuilder.getSnapshot();
     renderPalette(snapshot);
@@ -776,6 +1028,7 @@ export function createBuilderPanel(
     renderWorldState();
     renderCameraMode();
     renderTransformMode();
+    renderRouteTools();
     renderSelection(snapshot);
     renderStatus(snapshot);
   };
@@ -1078,6 +1331,173 @@ export function createBuilderPanel(
 
   advancedToolsCloseButton.addEventListener("click", () => {
     setAdvancedToolsOpen(false);
+  });
+
+  const readRouteDwellMs = (): number => {
+    const dwellMs = Number(routeDwellInput.value);
+    if (!Number.isFinite(dwellMs)) {
+      return 0;
+    }
+
+    return Math.max(0, Math.round(dwellMs));
+  };
+
+  const applyRouteTimingFromInputs = (): void => {
+    const mode = routeTimingModeSelect.value === "speed" ? "speed" : "duration";
+    const numericValue = Number(routeTimingValueInput.value);
+    if (!Number.isFinite(numericValue)) {
+      render();
+      return;
+    }
+
+    if (mode === "duration") {
+      sceneBuilder.updateRouteSettings({
+        timing: {
+          mode: "duration",
+          totalDurationMs: Math.max(0, Math.round(numericValue))
+        }
+      });
+      return;
+    }
+
+    sceneBuilder.updateRouteSettings({
+      timing: {
+        mode: "speed",
+        unitsPerSecond: Math.max(0.1, Number(numericValue.toFixed(3)))
+      }
+    });
+  };
+
+  routeModeToggleButton.addEventListener("click", () => {
+    const routeEditState = sceneBuilder.getRouteEditState();
+    sceneBuilder.setRouteModeEnabled(!routeEditState.routeModeEnabled);
+  });
+
+  routeCreateButton.addEventListener("click", () => {
+    const createdRouteId = sceneBuilder.createRoute();
+    if (createdRouteId) {
+      showToast("Created a new camera route.", "success");
+    }
+  });
+
+  routeDeleteButton.addEventListener("click", () => {
+    const routeEditState = sceneBuilder.getRouteEditState();
+    const selectedRoute = routeEditState.routes.find((route) => route.id === routeEditState.selectedRouteId);
+    if (!selectedRoute) {
+      return;
+    }
+
+    const confirmed = window.confirm(`Delete route "${selectedRoute.name}"?`);
+    if (!confirmed) {
+      return;
+    }
+
+    sceneBuilder.deleteRoute(selectedRoute.id);
+  });
+
+  routeAddPointButton.addEventListener("click", () => {
+    sceneBuilder.addPointFromCurrentCamera(readRouteDwellMs());
+  });
+
+  routeSelect.addEventListener("change", () => {
+    const selectedRouteId = routeSelect.value.trim() || null;
+    sceneBuilder.selectRoute(selectedRouteId);
+  });
+
+  routeDefaultSelect.addEventListener("change", () => {
+    const defaultRouteId = routeDefaultSelect.value.trim() || null;
+    sceneBuilder.setDefaultRoute(defaultRouteId);
+  });
+
+  routePreviewButton.addEventListener("click", () => {
+    sceneBuilder.previewSelectedRoute();
+  });
+
+  routeStopButton.addEventListener("click", () => {
+    sceneBuilder.stopRoutePreview({ resetToStart: true });
+  });
+
+  routeNameInput.addEventListener("change", () => {
+    sceneBuilder.updateRouteSettings({
+      name: routeNameInput.value
+    });
+  });
+
+  routeLoopInput.addEventListener("change", () => {
+    sceneBuilder.updateRouteSettings({
+      loop: routeLoopInput.checked
+    });
+  });
+
+  routeEasingSelect.addEventListener("change", () => {
+    sceneBuilder.updateRouteSettings({
+      easing: routeEasingSelect.value === "linear" ? "linear" : "easeInOutSine"
+    });
+  });
+
+  routeTimingModeSelect.addEventListener("change", () => {
+    const routeEditState = sceneBuilder.getRouteEditState();
+    const selectedRoute = getSelectedRoute(routeEditState);
+    if (!selectedRoute) {
+      return;
+    }
+
+    if (routeTimingModeSelect.value === "speed") {
+      const speed = selectedRoute.timing.mode === "speed"
+        ? selectedRoute.timing.unitsPerSecond
+        : DEFAULT_ROUTE_SPEED;
+      sceneBuilder.updateRouteSettings({
+        timing: {
+          mode: "speed",
+          unitsPerSecond: Math.max(0.1, Number(speed.toFixed(3)))
+        }
+      });
+      return;
+    }
+
+    const duration = selectedRoute.timing.mode === "duration"
+      ? selectedRoute.timing.totalDurationMs
+      : DEFAULT_ROUTE_DURATION_MS;
+    sceneBuilder.updateRouteSettings({
+      timing: {
+        mode: "duration",
+        totalDurationMs: Math.max(0, Math.round(duration))
+      }
+    });
+  });
+
+  routeTimingValueInput.addEventListener("change", () => {
+    applyRouteTimingFromInputs();
+  });
+
+  routePointsElement.addEventListener("click", (event) => {
+    const target = event.target;
+    const button = target instanceof HTMLElement
+      ? target.closest<HTMLButtonElement>("[data-route-point-action][data-route-point-index]")
+      : null;
+    if (!button) {
+      return;
+    }
+
+    const action = button.dataset.routePointAction;
+    const pointIndex = Number(button.dataset.routePointIndex ?? "-1");
+    if (!Number.isInteger(pointIndex) || pointIndex < 0) {
+      return;
+    }
+
+    if (action === "select") {
+      sceneBuilder.selectRoutePoint(pointIndex);
+      return;
+    }
+
+    if (action === "up" || action === "down") {
+      sceneBuilder.movePoint(pointIndex, action);
+      return;
+    }
+
+    if (action === "delete") {
+      sceneBuilder.removePoint(pointIndex);
+    }
   });
 
   const handleDocumentPointerDown = (event: PointerEvent): void => {
