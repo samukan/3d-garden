@@ -5,14 +5,14 @@ import { expect, test } from "@playwright/test";
 import { attachBrowserDebugListeners } from "../../browserDebugTestUtils";
 
 const UPLOAD_DB_NAME = "skill-garden.uploaded-assets.v1";
-const uploadCactusPath = path.join(
+const uploadCliffBlockPath = path.join(
   process.cwd(),
   "public",
   "assets",
   "nature-kit",
   "Models",
   "GLTF format",
-  "cactus_tall.glb"
+  "cliff_block_stone.glb"
 );
 const uploadTreePath = path.join(
   process.cwd(),
@@ -48,7 +48,7 @@ test("sorts uploaded assets by A-Z and date uploaded", async ({ page, baseURL })
   page.once("dialog", (dialog) => {
     void dialog.accept("Sort Test");
   });
-  await page.locator("#builder-upload-asset-input").setInputFiles(uploadCactusPath);
+  await page.locator("#builder-upload-asset-input").setInputFiles(uploadCliffBlockPath);
   await expect(page.locator("#builder-status")).toContainText("Uploaded 1 asset", {
     timeout: 20_000
   });
@@ -65,7 +65,7 @@ test("sorts uploaded assets by A-Z and date uploaded", async ({ page, baseURL })
 
   const categoryButtons = page.locator('[data-upload-category="Sort Test"] .builder-palette-item');
   await expect(categoryButtons).toHaveCount(2);
-  await expect(categoryButtons.first()).toContainText("Cactus Tall");
+  await expect(categoryButtons.first()).toContainText("Cliff Block Stone");
 
   await page.selectOption("#builder-upload-sort", "date-uploaded");
   await expect(categoryButtons.first()).toContainText("Tree Tall");

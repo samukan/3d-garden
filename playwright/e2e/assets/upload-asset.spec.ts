@@ -14,14 +14,14 @@ const uploadTreeTallPath = path.join(
   "GLTF format",
   "tree_tall.glb"
 );
-const uploadCactusPath = path.join(
+const uploadCliffBlockPath = path.join(
   process.cwd(),
   "public",
   "assets",
   "nature-kit",
   "Models",
   "GLTF format",
-  "cactus_tall.glb"
+  "cliff_block_stone.glb"
 );
 
 test("uploads multiple GLBs in builder mode", async ({ page, baseURL }) => {
@@ -48,16 +48,18 @@ test("uploads multiple GLBs in builder mode", async ({ page, baseURL }) => {
   page.once("dialog", (dialog) => {
     void dialog.accept("Batch Trees");
   });
-  await page.locator("#builder-upload-asset-input").setInputFiles([uploadTreeTallPath, uploadCactusPath]);
+  await page.locator("#builder-upload-asset-input").setInputFiles([uploadTreeTallPath, uploadCliffBlockPath]);
 
   await expect(page.locator("#builder-status")).toContainText("Uploaded 2 assets", {
     timeout: 20_000
   });
 
-  const uploadedAssetButton = page.locator("#builder-palette button", { hasText: "Tree Tall" });
-  const uploadedCactusButton = page.locator("#builder-palette button", { hasText: "Cactus Tall" });
+  const uploadedAssetButton = page.locator('[data-upload-category="Batch Trees"] button', { hasText: "Tree Tall" });
+  const uploadedCliffButton = page.locator('[data-upload-category="Batch Trees"] button', {
+    hasText: "Cliff Block Stone"
+  });
   await expect(uploadedAssetButton).toBeVisible();
-  await expect(uploadedCactusButton).toBeVisible();
+  await expect(uploadedCliffButton).toBeVisible();
   await uploadedAssetButton.click();
 
   await page.locator("#builder-place-asset").click();
@@ -70,10 +72,12 @@ test("uploads multiple GLBs in builder mode", async ({ page, baseURL }) => {
     timeout: 20_000
   });
 
-  const persistedAssetButton = page.locator("#builder-palette button", { hasText: "Tree Tall" });
-  const persistedCactusButton = page.locator("#builder-palette button", { hasText: "Cactus Tall" });
+  const persistedAssetButton = page.locator('[data-upload-category="Batch Trees"] button', { hasText: "Tree Tall" });
+  const persistedCliffButton = page.locator('[data-upload-category="Batch Trees"] button', {
+    hasText: "Cliff Block Stone"
+  });
   await expect(persistedAssetButton).toBeVisible();
-  await expect(persistedCactusButton).toBeVisible();
+  await expect(persistedCliffButton).toBeVisible();
   await persistedAssetButton.click();
   await page.locator("#builder-place-asset").click();
   await expect(page.locator("#builder-status")).toContainText("Placed", {
