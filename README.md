@@ -147,8 +147,6 @@ Notes:
 - App mode routing is query-param based (`?appMode=menu|builder|viewer`), so root static hosting is sufficient.
 - Because persistence is local-first, data in one environment (localhost/Vercel preview/Vercel production) does not automatically appear in another.
 
-Detailed deployment checks are in [`docs/vercel-readiness.md`](docs/vercel-readiness.md) and [`docs/pre-presentation-checklist.md`](docs/pre-presentation-checklist.md).
-
 ## What I Learned
 
 Many parts of this project were relatively new to me, and this first version reflects that learning curve.
@@ -175,11 +173,6 @@ Many parts of this project were relatively new to me, and this first version ref
 - Improve portability tooling for worlds that reference uploaded assets.
 - Optimize first-load performance and asset loading behavior.
 - Expand editor usability and presentation polish.
-- Add optional deployment automation once product scope stabilizes.
-
-## Pre-Presentation Checklist
-
-See [`docs/pre-presentation-checklist.md`](docs/pre-presentation-checklist.md) for the full launch checklist (build, manual QA, docs QA, deployment QA, and live Vercel verification).
 
 ## Asset Attribution
 
