@@ -284,6 +284,18 @@
   min-width: 10.5rem;
 }
 
+.builder-transform-mode-group {
+  display: inline-grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-1);
+}
+
+.builder-transform-mode-button {
+  min-width: 4.5rem;
+  min-height: 2.35rem;
+  padding: 0 var(--space-2);
+}
+
 .builder-shell-panel {
   padding: var(--space-4);
   border-radius: var(--radius-panel);
@@ -829,6 +841,10 @@
   .builder-top-bar-field {
     min-width: 100%;
     max-width: none;
+  }
+
+  .builder-transform-mode-group {
+    width: 100%;
   }
 
   .builder-advanced-tools-panel {

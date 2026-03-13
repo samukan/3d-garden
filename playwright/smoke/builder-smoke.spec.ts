@@ -2,6 +2,18 @@ import { expect, test } from "@playwright/test";
 
 import { attachBrowserDebugListeners, normalizeInlineText } from "../browserDebugTestUtils";
 
+interface BuilderDebugState {
+  attachedNodeMatchesSelectionRoot: boolean;
+  cameraNavigationEnabled: boolean;
+  selectedMeshBoundingBoxes: boolean[];
+}
+
+interface BuilderDebugApi {
+  beginGizmoInteractionForTest: () => void;
+  completeGizmoInteractionForTest: () => void;
+  getState: () => BuilderDebugState;
+}
+
 function extractFirstObjectLayout(exportedLayout: string): {
   id: string;
   position: { x: number; y: number; z: number };
@@ -35,6 +47,9 @@ test("boots builder mode and supports basic layout actions", async ({ page, base
   await expect(page.locator("#app-nav-actions")).toBeHidden();
   await expect(page.locator("#builder-back-to-menu")).toBeVisible();
   await expect(page.locator("#builder-camera-nav-toggle")).toBeVisible();
+  await expect(page.locator("#builder-transform-mode-move")).toBeVisible();
+  await expect(page.locator("#builder-transform-mode-rotate")).toBeVisible();
+  await expect(page.locator("#builder-transform-mode-scale")).toBeVisible();
   await expect(page.locator("#builder-advanced-tools-toggle")).toBeVisible();
   await expect(page.locator("#builder-toggle-library-panel")).toBeVisible();
   await expect(page.locator("#builder-toggle-inspector-panel")).toBeVisible();
@@ -54,6 +69,12 @@ test("boots builder mode and supports basic layout actions", async ({ page, base
   await expect(page.locator("#builder-camera-nav-toggle")).toHaveText("Camera Nav Mode");
   await page.keyboard.press("c");
   await expect(page.locator("#builder-camera-nav-toggle")).toHaveText("Object Edit Mode");
+  await page.locator("#builder-transform-mode-rotate").click();
+  await expect(page.locator("#builder-transform-mode-rotate")).toHaveAttribute("aria-pressed", "true");
+  await page.keyboard.press("3");
+  await expect(page.locator("#builder-transform-mode-scale")).toHaveAttribute("aria-pressed", "true");
+  await page.keyboard.press("1");
+  await expect(page.locator("#builder-transform-mode-move")).toHaveAttribute("aria-pressed", "true");
   await page.locator("#builder-toggle-library-panel").click();
   await expect(libraryPanel).toBeHidden();
   await page.locator("#builder-toggle-library-panel").click();
@@ -105,6 +126,37 @@ test("boots builder mode and supports basic layout actions", async ({ page, base
   });
   await expect(page.locator("#builder-selection-summary")).not.toContainText("No object selected");
   await expect(page.locator("#builder-selection-summary")).toContainText("builder-object-");
+
+  const selectionDebugState = await page.evaluate(() => {
+    const api = (window as Window & { __skillGardenBuilderDebug?: BuilderDebugApi }).__skillGardenBuilderDebug;
+    return api?.getState() ?? null;
+  });
+  expect(selectionDebugState).not.toBeNull();
+  expect(selectionDebugState?.attachedNodeMatchesSelectionRoot).toBe(true);
+  expect(selectionDebugState?.selectedMeshBoundingBoxes.every((isVisible) => isVisible)).toBe(true);
+
+  await page.keyboard.press("c");
+  await expect(page.locator("#builder-camera-nav-toggle")).toHaveText("Camera Nav Mode");
+  const gizmoCameraState = await page.evaluate(() => {
+    const api = (window as Window & { __skillGardenBuilderDebug?: BuilderDebugApi }).__skillGardenBuilderDebug;
+    if (!api) {
+      return null;
+    }
+
+    api.beginGizmoInteractionForTest();
+    const during = api.getState();
+    api.completeGizmoInteractionForTest();
+    const after = api.getState();
+    return {
+      duringCameraNavigation: during.cameraNavigationEnabled,
+      afterCameraNavigation: after.cameraNavigationEnabled
+    };
+  });
+  expect(gizmoCameraState).not.toBeNull();
+  expect(gizmoCameraState?.duringCameraNavigation).toBe(false);
+  expect(gizmoCameraState?.afterCameraNavigation).toBe(true);
+  await page.keyboard.press("c");
+  await expect(page.locator("#builder-camera-nav-toggle")).toHaveText("Object Edit Mode");
 
   await page.locator("#builder-tab-scene").click();
   const sceneObjectRows = page.locator(".builder-scene-object-item");

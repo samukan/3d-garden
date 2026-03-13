@@ -2,6 +2,7 @@ import { Engine } from "@babylonjs/core/Engines/engine";
 import { WebGPUEngine } from "@babylonjs/core/Engines/webgpuEngine";
 import { PointerEventTypes } from "@babylonjs/core/Events/pointerEvents";
 import "@babylonjs/core/Culling/ray";
+import { GizmoManager } from "@babylonjs/core/Gizmos/gizmoManager";
 import { DirectionalLight } from "@babylonjs/core/Lights/directionalLight";
 import { HemisphericLight } from "@babylonjs/core/Lights/hemisphericLight";
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
@@ -24,7 +25,7 @@ import {
   renameUploadedAssetCategory as renameUploadedAssetCategoryInStore,
   saveUploadedAsset
 } from "../storage/uploadedAssetStore";
-import { degreesToRadians } from "../utils/angle";
+import { degreesToRadians, radiansToDegrees } from "../utils/angle";
 import { isBrowserDebugEnabled, logBrowserDebug } from "../utils/browserDebug";
 import { enableMeshVertexColors } from "../utils/meshColors";
 import { getBuilderPalette } from "./builderPalette";
@@ -65,6 +66,8 @@ export interface UploadedAssetBatchUploadResult {
   uploaded: UploadedAssetUploadSuccess[];
 }
 
+export type BuilderTransformMode = "move" | "rotate" | "scale";
+
 export interface SceneBuilderController {
   scene: Scene;
   deleteSelectedObject: () => void;
@@ -74,10 +77,12 @@ export interface SceneBuilderController {
   getSnapshot: () => BuilderSceneSnapshot;
   importLayout: (input: string, options?: ImportLayoutOptions) => Promise<{ success: boolean; error?: string }>;
   isCameraNavigationEnabled: () => boolean;
+  getTransformMode: () => BuilderTransformMode;
   placeAsset: (assetId: AssetId) => Promise<void>;
   redo: () => Promise<boolean>;
   selectObjectById: (objectId: string | null) => void;
   setCameraNavigationEnabled: (enabled: boolean) => void;
+  setTransformMode: (mode: BuilderTransformMode) => void;
   subscribe: (listener: () => void) => () => void;
   clearUploads: () => Promise<{ success: boolean; removedCount: number; error?: string }>;
   undo: () => Promise<boolean>;
@@ -102,22 +107,16 @@ interface PlacedObjectEntry {
   root: TransformNode;
 }
 
-interface BuilderDragState {
-  beforeSnapshot: BuilderHistorySnapshot;
-  dragSnapshotRecorded: boolean;
-  objectId: string;
-  pointerId: number;
-  startClientX: number;
-  startClientY: number;
-  startGroundPoint: Vector3;
-  startPosition: BuilderVector3;
-  didDrag: boolean;
-}
-
 interface BuilderHistorySnapshot {
   layoutRecords: BuilderLayoutRecord[];
   nextObjectNumber: number;
   selectedObjectId: string | null;
+}
+
+interface BuilderGizmoInteractionState {
+  beforeSnapshot: BuilderHistorySnapshot;
+  cameraNavigationEnabledBefore: boolean;
+  objectId: string;
 }
 
 const HISTORY_LIMIT = 100;
@@ -135,10 +134,12 @@ export async function createSceneBuilder({
   const listeners = new Set<() => void>();
   const placedObjects = new Map<string, PlacedObjectEntry>();
   const nodeObjectMap = new Map<number, string>();
+  const gizmoManager = new GizmoManager(scene);
   let assetDefinitions = createAssetDefinitionMap(await loadAssetDefinitions());
   let palette: BuilderPaletteItem[] = getBuilderPalette(Array.from(assetDefinitions.values()));
-  let dragState: BuilderDragState | null = null;
   let suppressNextPick = false;
+  let transformMode: BuilderTransformMode = "move";
+  let gizmoInteractionState: BuilderGizmoInteractionState | null = null;
   let nextObjectNumber = 1;
   let undoStack: BuilderHistorySnapshot[] = [];
   let redoStack: BuilderHistorySnapshot[] = [];
@@ -215,6 +216,9 @@ export async function createSceneBuilder({
     });
   };
 
+  gizmoManager.usePointerToAttachGizmos = false;
+  gizmoManager.clearGizmoOnEmptyPointerEvent = false;
+
   if (isBrowserDebugEnabled()) {
     const debugMarker = MeshBuilder.CreateBox("builder-debug-origin", { size: 0.8 }, scene);
     debugMarker.position = new Vector3(0, 0.4, 0);
@@ -286,6 +290,116 @@ export async function createSceneBuilder({
     redoStack = [];
   };
 
+  const setGizmoAttachmentForSelection = (): void => {
+    if (!state.selectedObjectId) {
+      gizmoManager.attachToNode(null);
+      return;
+    }
+
+    const selectedEntry = placedObjects.get(state.selectedObjectId);
+    gizmoManager.attachToNode(selectedEntry?.root ?? null);
+  };
+
+  const applyTransformMode = (): void => {
+    gizmoManager.positionGizmoEnabled = transformMode === "move";
+    gizmoManager.rotationGizmoEnabled = transformMode === "rotate";
+    gizmoManager.scaleGizmoEnabled = transformMode === "scale";
+  };
+
+  const updateLayoutFromRootNode = (
+    objectId: string,
+    options?: {
+      silentStatus?: boolean;
+      statusMessage?: string;
+    }
+  ): boolean => {
+    const entry = placedObjects.get(objectId);
+    if (!entry) {
+      return false;
+    }
+
+    const definition = assetDefinitions.get(entry.layout.assetId);
+    if (!definition) {
+      return false;
+    }
+
+    const nextScaleRaw = entry.root.scaling.x / definition.scale;
+    const nextScale = Number(nextScaleRaw.toFixed(3));
+
+    return updateObjectTransform(
+      objectId,
+      {
+        position: {
+          x: Number(entry.root.position.x.toFixed(3)),
+          y: Number(entry.root.position.y.toFixed(3)),
+          z: Number(entry.root.position.z.toFixed(3))
+        },
+        rotationY: Number(radiansToDegrees(entry.root.rotation.y - definition.rotationY).toFixed(3)),
+        scale: nextScale > 0 ? nextScale : entry.layout.scale
+      },
+      options
+    );
+  };
+
+  const restoreCameraNavigationState = (shouldEnableCamera: boolean): void => {
+    if (developmentCamera.isNavigationEnabled() !== shouldEnableCamera) {
+      developmentCamera.setNavigationEnabled(shouldEnableCamera);
+    }
+  };
+
+  const beginGizmoInteraction = (): void => {
+    if (historyRestoreInFlight || gizmoInteractionState || !state.selectedObjectId) {
+      return;
+    }
+
+    gizmoInteractionState = {
+      beforeSnapshot: captureHistorySnapshot(),
+      cameraNavigationEnabledBefore: developmentCamera.isNavigationEnabled(),
+      objectId: state.selectedObjectId
+    };
+
+    if (developmentCamera.isNavigationEnabled()) {
+      developmentCamera.setNavigationEnabled(false);
+    }
+
+    state.statusMessage = "Transforming selected object...";
+    suppressNextPick = true;
+    notify();
+  };
+
+  const completeGizmoInteraction = (): void => {
+    if (!gizmoInteractionState) {
+      return;
+    }
+
+    const interactionState = gizmoInteractionState;
+    gizmoInteractionState = null;
+
+    const didChange = updateLayoutFromRootNode(interactionState.objectId, { silentStatus: true });
+    if (didChange) {
+      pushUndoSnapshot(interactionState.beforeSnapshot);
+      const entry = placedObjects.get(interactionState.objectId);
+      if (entry) {
+        state.statusMessage = `Transformed ${getAssetLabel(assetDefinitions, entry.layout.assetId)}.`;
+      }
+    } else {
+      state.statusMessage = "Transform unchanged.";
+    }
+
+    restoreCameraNavigationState(interactionState.cameraNavigationEnabledBefore);
+    notify();
+  };
+
+  const cancelGizmoInteraction = (): void => {
+    if (!gizmoInteractionState) {
+      return;
+    }
+
+    const cameraNavigationEnabledBefore = gizmoInteractionState.cameraNavigationEnabledBefore;
+    gizmoInteractionState = null;
+    restoreCameraNavigationState(cameraNavigationEnabledBefore);
+  };
+
   const getSelectedObjectSnapshot = (): BuilderSelectedObjectSnapshot | null => {
     if (!state.selectedObjectId) {
       return null;
@@ -320,7 +434,6 @@ export async function createSceneBuilder({
     }
 
     developmentCamera.setNavigationEnabled(enabled);
-    dragState = null;
     suppressNextPick = false;
     state.statusMessage = enabled
       ? "Camera navigation enabled."
@@ -362,12 +475,14 @@ export async function createSceneBuilder({
 
     if (!objectId) {
       selectionController.setSelection([]);
+      setGizmoAttachmentForSelection();
       notify();
       return;
     }
 
     const entry = placedObjects.get(objectId);
     selectionController.setSelection(entry?.meshes ?? []);
+    setGizmoAttachmentForSelection();
     notify();
   };
 
@@ -378,6 +493,60 @@ export async function createSceneBuilder({
 
     setSelection(objectId);
   };
+
+  const setTransformMode = (mode: BuilderTransformMode): void => {
+    if (transformMode === mode) {
+      return;
+    }
+
+    transformMode = mode;
+    applyTransformMode();
+    state.statusMessage =
+      mode === "move"
+        ? "Move gizmo enabled."
+        : mode === "rotate"
+          ? "Rotate gizmo enabled."
+          : "Scale gizmo enabled.";
+    notify();
+  };
+
+  gizmoManager.positionGizmoEnabled = true;
+  gizmoManager.rotationGizmoEnabled = true;
+  gizmoManager.scaleGizmoEnabled = true;
+
+  const positionGizmo = gizmoManager.gizmos.positionGizmo;
+  const rotationGizmo = gizmoManager.gizmos.rotationGizmo;
+  const scaleGizmo = gizmoManager.gizmos.scaleGizmo;
+  gizmoManager.scaleRatio = 1.15;
+
+  if (scaleGizmo) {
+    // Keep builder scale operations uniform so they map cleanly to layout.scale.
+    scaleGizmo.xGizmo.isEnabled = false;
+    scaleGizmo.yGizmo.isEnabled = false;
+    scaleGizmo.zGizmo.isEnabled = false;
+    scaleGizmo.uniformScaleGizmo.isEnabled = true;
+  }
+
+  positionGizmo?.onDragStartObservable.add(() => {
+    beginGizmoInteraction();
+  });
+  positionGizmo?.onDragEndObservable.add(() => {
+    completeGizmoInteraction();
+  });
+  rotationGizmo?.onDragStartObservable.add(() => {
+    beginGizmoInteraction();
+  });
+  rotationGizmo?.onDragEndObservable.add(() => {
+    completeGizmoInteraction();
+  });
+  scaleGizmo?.onDragStartObservable.add(() => {
+    beginGizmoInteraction();
+  });
+  scaleGizmo?.onDragEndObservable.add(() => {
+    completeGizmoInteraction();
+  });
+
+  applyTransformMode();
 
   const instantiateRecord = async (record: BuilderLayoutRecord): Promise<boolean> => {
     const definition = assetDefinitions.get(record.assetId);
@@ -454,7 +623,8 @@ export async function createSceneBuilder({
     state.layoutRecords = [];
     selectionController.setSelection([]);
     state.selectedObjectId = null;
-    dragState = null;
+    gizmoManager.attachToNode(null);
+    cancelGizmoInteraction();
     suppressNextPick = false;
   };
 
@@ -626,15 +796,6 @@ export async function createSceneBuilder({
     return true;
   };
 
-  const getGroundPoint = (): Vector3 | null => {
-    const groundPick = scene.pick(scene.pointerX, scene.pointerY, (mesh) => mesh === ground);
-    if (!groundPick?.hit || !groundPick.pickedPoint) {
-      return null;
-    }
-
-    return groundPick.pickedPoint.clone();
-  };
-
   const placeAsset = async (assetId: AssetId): Promise<void> => {
     if (historyRestoreInFlight) {
       return;
@@ -707,9 +868,8 @@ export async function createSceneBuilder({
     const removedIndex = state.layoutRecords.findIndex((record) => record.id === objectId);
     const label = getAssetLabel(assetDefinitions, entry.layout.assetId);
     const wasSelected = state.selectedObjectId === objectId;
-
-    if (dragState?.objectId === objectId) {
-      dragState = null;
+    if (gizmoInteractionState?.objectId === objectId) {
+      cancelGizmoInteraction();
     }
 
     disposeEntry(entry);
@@ -1039,104 +1199,7 @@ export async function createSceneBuilder({
   scene.onPointerObservable.add((pointerInfo) => {
     const pointerEvent = pointerInfo.event as PointerEvent | undefined;
 
-    if (pointerInfo.type === PointerEventTypes.POINTERDOWN) {
-      if (historyRestoreInFlight) {
-        return;
-      }
-
-      if (!pointerEvent || pointerEvent.button !== 0) {
-        return;
-      }
-
-      const objectId = resolveObjectIdForMesh(pointerInfo.pickInfo?.pickedMesh ?? null);
-      if (!objectId) {
-        return;
-      }
-
-      if (developmentCamera.isNavigationEnabled()) {
-        setSelection(objectId);
-        return;
-      }
-
-      const groundPoint = getGroundPoint();
-      const entry = placedObjects.get(objectId);
-      if (!groundPoint || !entry) {
-        return;
-      }
-
-      setSelection(objectId);
-      dragState = {
-        beforeSnapshot: captureHistorySnapshot(),
-        dragSnapshotRecorded: false,
-        objectId,
-        pointerId: pointerEvent.pointerId,
-        startClientX: pointerEvent.clientX,
-        startClientY: pointerEvent.clientY,
-        startGroundPoint: groundPoint,
-        startPosition: { ...entry.layout.position },
-        didDrag: false
-      };
-      return;
-    }
-
-    if (pointerInfo.type === PointerEventTypes.POINTERMOVE) {
-      if (!dragState || !pointerEvent || pointerEvent.pointerId !== dragState.pointerId) {
-        return;
-      }
-
-      const currentGroundPoint = getGroundPoint();
-      if (!currentGroundPoint) {
-        return;
-      }
-
-      const movementDistance = Math.hypot(
-        pointerEvent.clientX - dragState.startClientX,
-        pointerEvent.clientY - dragState.startClientY
-      );
-
-      if (!dragState.didDrag && movementDistance < 4) {
-        return;
-      }
-
-      dragState.didDrag = true;
-
-      updateObjectTransform(
-        dragState.objectId,
-        {
-          position: {
-            x: Number((dragState.startPosition.x + currentGroundPoint.x - dragState.startGroundPoint.x).toFixed(3)),
-            y: dragState.startPosition.y,
-            z: Number((dragState.startPosition.z + currentGroundPoint.z - dragState.startGroundPoint.z).toFixed(3))
-          }
-        },
-        { silentStatus: true }
-      );
-      return;
-    }
-
-    if (pointerInfo.type === PointerEventTypes.POINTERUP) {
-      if (!dragState || !pointerEvent || pointerEvent.pointerId !== dragState.pointerId) {
-        return;
-      }
-
-      const completedDrag = dragState;
-      dragState = null;
-
-      if (!completedDrag.didDrag) {
-        return;
-      }
-
-      const movedEntry = placedObjects.get(completedDrag.objectId);
-      if (movedEntry) {
-        state.statusMessage = `Moved ${getAssetLabel(assetDefinitions, movedEntry.layout.assetId)}.`;
-        if (!completedDrag.dragSnapshotRecorded) {
-          pushUndoSnapshot(completedDrag.beforeSnapshot);
-          completedDrag.dragSnapshotRecorded = true;
-        }
-        notify();
-      }
-
-      suppressNextPick = true;
+    if (historyRestoreInFlight) {
       return;
     }
 
@@ -1153,6 +1216,10 @@ export async function createSceneBuilder({
       return;
     }
 
+    if (gizmoManager.isDragging || gizmoManager.isHovered) {
+      return;
+    }
+
     const pickedMesh = pointerInfo.pickInfo?.pickedMesh ?? null;
     setSelection(resolveObjectIdForMesh(pickedMesh));
   });
@@ -1165,11 +1232,79 @@ export async function createSceneBuilder({
     developmentCamera.resetOverview(true);
   };
 
+  type BuilderDebugApi = {
+    applySelectedRootDeltaForTest: (delta: { x?: number; y?: number; z?: number }) => boolean;
+    beginGizmoInteractionForTest: () => void;
+    completeGizmoInteractionForTest: () => void;
+    getState: () => {
+      attachedNodeName: string | null;
+      attachedNodeMatchesSelectionRoot: boolean;
+      cameraNavigationEnabled: boolean;
+      gizmoDragging: boolean;
+      gizmoHovering: boolean;
+      selectedMeshBoundingBoxes: boolean[];
+      selectedObjectId: string | null;
+      transformMode: BuilderTransformMode;
+    };
+  };
+
+  let debugApi: BuilderDebugApi | null = null;
+  if (isBrowserDebugEnabled() && typeof window !== "undefined") {
+    debugApi = {
+      applySelectedRootDeltaForTest: (delta) => {
+        if (!state.selectedObjectId) {
+          return false;
+        }
+
+        const entry = placedObjects.get(state.selectedObjectId);
+        if (!entry) {
+          return false;
+        }
+
+        entry.root.position.x += delta.x ?? 0;
+        entry.root.position.y += delta.y ?? 0;
+        entry.root.position.z += delta.z ?? 0;
+        return true;
+      },
+      beginGizmoInteractionForTest: () => {
+        beginGizmoInteraction();
+      },
+      completeGizmoInteractionForTest: () => {
+        completeGizmoInteraction();
+      },
+      getState: () => {
+        const selectedEntry = state.selectedObjectId ? placedObjects.get(state.selectedObjectId) : null;
+        return {
+          attachedNodeName: gizmoManager.attachedNode?.name ?? null,
+          attachedNodeMatchesSelectionRoot: Boolean(
+            selectedEntry && gizmoManager.attachedNode === selectedEntry.root
+          ),
+          cameraNavigationEnabled: developmentCamera.isNavigationEnabled(),
+          gizmoDragging: gizmoManager.isDragging,
+          gizmoHovering: gizmoManager.isHovered,
+          selectedMeshBoundingBoxes: selectedEntry?.meshes.map((mesh) => mesh.showBoundingBox) ?? [],
+          selectedObjectId: state.selectedObjectId,
+          transformMode
+        };
+      }
+    };
+
+    const debugWindow = window as Window & { __skillGardenBuilderDebug?: BuilderDebugApi };
+    debugWindow.__skillGardenBuilderDebug = debugApi;
+  }
+
   window.addEventListener("keydown", handleKeyDown);
   scene.onDisposeObservable.add(() => {
     window.removeEventListener("keydown", handleKeyDown);
+    if (typeof window !== "undefined" && debugApi) {
+      const debugWindow = window as Window & { __skillGardenBuilderDebug?: BuilderDebugApi };
+      if (debugWindow.__skillGardenBuilderDebug === debugApi) {
+        delete debugWindow.__skillGardenBuilderDebug;
+      }
+    }
     clearAllObjects();
     assetLibrary.dispose();
+    gizmoManager.dispose();
     selectionController.dispose();
     developmentCamera.dispose();
   });
@@ -1187,10 +1322,12 @@ export async function createSceneBuilder({
     getSnapshot,
     importLayout,
     isCameraNavigationEnabled: () => developmentCamera.isNavigationEnabled(),
+    getTransformMode: () => transformMode,
     placeAsset,
     redo,
     selectObjectById,
     setCameraNavigationEnabled,
+    setTransformMode,
     subscribe: (listener) => {
       listeners.add(listener);
       return () => {

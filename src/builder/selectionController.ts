@@ -14,26 +14,36 @@ export interface SelectionController {
 export function createSelectionController(scene: Scene): SelectionController {
   const engine = scene.getEngine();
   const isWebGpu = engine instanceof WebGPUEngine || engine.getClassName?.() === "WebGPUEngine";
-
-  if (isWebGpu) {
-    return {
-      setSelection: () => {},
-      dispose: () => {}
-    };
+  let highlightLayer: HighlightLayer | null = null;
+  if (!isWebGpu) {
+    try {
+      highlightLayer = new HighlightLayer("builder-selection-layer", scene);
+    } catch {
+      highlightLayer = null;
+    }
   }
-
-  const highlightLayer = new HighlightLayer("builder-selection-layer", scene);
   let selectedMeshes: Mesh[] = [];
+  const highlightColor = new Color3(1, 0.84, 0.42);
+
+  const setFallbackSelection = (mesh: Mesh, enabled: boolean): void => {
+    if (mesh.isDisposed()) {
+      return;
+    }
+
+    mesh.showBoundingBox = enabled;
+  };
 
   const setSelection = (meshes: Mesh[]): void => {
     for (const mesh of selectedMeshes) {
-      highlightLayer.removeMesh(mesh);
+      highlightLayer?.removeMesh(mesh);
+      setFallbackSelection(mesh, false);
     }
 
     selectedMeshes = meshes;
 
     for (const mesh of selectedMeshes) {
-      highlightLayer.addMesh(mesh, new Color3(1, 0.84, 0.42));
+      highlightLayer?.addMesh(mesh, highlightColor);
+      setFallbackSelection(mesh, true);
     }
   };
 
@@ -41,7 +51,7 @@ export function createSelectionController(scene: Scene): SelectionController {
     setSelection,
     dispose: () => {
       setSelection([]);
-      highlightLayer.dispose();
+      highlightLayer?.dispose();
     }
   };
 }

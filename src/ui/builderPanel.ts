@@ -1,4 +1,4 @@
-import type { SceneBuilderController } from "../builder/sceneBuilder";
+import type { BuilderTransformMode, SceneBuilderController } from "../builder/sceneBuilder";
 import type { BuilderPaletteItem, BuilderSceneSnapshot } from "../builder/builderTypes";
 import { DEFAULT_UPLOADED_ASSET_CATEGORY, type AssetId } from "../generation/natureKitAssetManifest";
 import { escapeHtml } from "../utils/html";
@@ -38,6 +38,11 @@ const topBarMarkup = `
     </div>
     <div class="builder-top-bar-actions builder-top-bar-actions-tools">
       <button id="builder-camera-nav-toggle" class="ui-button builder-button builder-button-camera" type="button" aria-pressed="false">Object Edit Mode</button>
+      <div class="builder-transform-mode-group" role="group" aria-label="Transform mode">
+        <button id="builder-transform-mode-move" class="ui-button builder-button builder-transform-mode-button" type="button" data-transform-mode="move" aria-pressed="true">Move</button>
+        <button id="builder-transform-mode-rotate" class="ui-button builder-button builder-transform-mode-button" type="button" data-transform-mode="rotate" aria-pressed="false">Rotate</button>
+        <button id="builder-transform-mode-scale" class="ui-button builder-button builder-transform-mode-button" type="button" data-transform-mode="scale" aria-pressed="false">Scale</button>
+      </div>
       <button id="builder-advanced-tools-toggle" class="ui-button builder-button" type="button" aria-expanded="false" aria-controls="builder-advanced-tools-panel">Advanced Tools</button>
       <p id="builder-world-status" class="builder-status builder-world-status" aria-live="polite"></p>
     </div>
@@ -118,7 +123,7 @@ const inspectorPanelMarkup = `
     <div id="builder-selection-summary" class="builder-selection-summary"></div>
     <div class="builder-panel-subsection">
       <span class="builder-panel-label">Quick Move</span>
-      <p class="builder-control-note">Use object-edit mode to drag safely, or nudge by 0.25 units here.</p>
+      <p class="builder-control-note">Use top-bar transform modes (1/2/3) for gizmos, or nudge by 0.25 units here.</p>
       <div id="builder-move-controls" class="builder-control-grid builder-control-grid-move">
         <button class="ui-button builder-button builder-control-button" type="button" data-move-axis="z" data-move-delta="-0.25">Z-</button>
         <button class="ui-button builder-button builder-control-button" type="button" data-move-axis="y" data-move-delta="0.25">Y+</button>
@@ -275,6 +280,9 @@ export function createBuilderPanel(
   const uploadSortSelect = libraryPanel.querySelector<HTMLSelectElement>("#builder-upload-sort");
   const renameCategoryButton = libraryPanel.querySelector<HTMLButtonElement>("#builder-rename-upload-category");
   const cameraNavToggleButton = topBar.querySelector<HTMLButtonElement>("#builder-camera-nav-toggle");
+  const transformModeButtons = Array.from(
+    topBar.querySelectorAll<HTMLButtonElement>("[data-transform-mode]")
+  );
   const advancedToolsToggleButton = topBar.querySelector<HTMLButtonElement>("#builder-advanced-tools-toggle");
   const advancedToolsPanel = topBar.querySelector<HTMLElement>("#builder-advanced-tools-panel");
   const advancedToolsCloseButton = topBar.querySelector<HTMLButtonElement>("#builder-advanced-tools-close");
@@ -316,6 +324,7 @@ export function createBuilderPanel(
     !uploadSortSelect ||
     !renameCategoryButton ||
     !cameraNavToggleButton ||
+    transformModeButtons.length !== 3 ||
     !advancedToolsToggleButton ||
     !advancedToolsPanel ||
     !advancedToolsCloseButton ||
@@ -355,6 +364,7 @@ export function createBuilderPanel(
   let worldState = { ...options.worldState };
   let worldNameDraft = worldState.currentWorldName;
   let cameraNavigationEnabled = sceneBuilder.isCameraNavigationEnabled();
+  let transformMode: BuilderTransformMode = sceneBuilder.getTransformMode();
   let advancedToolsOpen = false;
   let assetRolloutDismissed = false;
   let libraryPanelCollapsed = false;
@@ -708,6 +718,22 @@ export function createBuilderPanel(
       : "Object edit mode is enabled. Camera navigation is locked. Shortcut: C.";
   };
 
+  const renderTransformMode = (): void => {
+    transformMode = sceneBuilder.getTransformMode();
+    for (const button of transformModeButtons) {
+      const buttonMode = button.dataset.transformMode;
+      const isActive = buttonMode === transformMode;
+      button.setAttribute("aria-pressed", String(isActive));
+      button.classList.toggle("builder-button-primary", isActive);
+      button.classList.toggle("is-active", isActive);
+    }
+  };
+
+  const setTransformMode = (mode: BuilderTransformMode): void => {
+    sceneBuilder.setTransformMode(mode);
+    renderTransformMode();
+  };
+
   const toggleCameraNavigationMode = (): void => {
     const nextEnabled = !sceneBuilder.isCameraNavigationEnabled();
     sceneBuilder.setCameraNavigationEnabled(nextEnabled);
@@ -730,6 +756,7 @@ export function createBuilderPanel(
 
     renderWorldState();
     renderCameraMode();
+    renderTransformMode();
     renderSelection(snapshot);
     renderStatus(snapshot);
   };
@@ -846,6 +873,24 @@ export function createBuilderPanel(
     if (key === "c") {
       event.preventDefault();
       toggleCameraNavigationMode();
+      return;
+    }
+
+    if (key === "1") {
+      event.preventDefault();
+      setTransformMode("move");
+      return;
+    }
+
+    if (key === "2") {
+      event.preventDefault();
+      setTransformMode("rotate");
+      return;
+    }
+
+    if (key === "3") {
+      event.preventDefault();
+      setTransformMode("scale");
       return;
     }
 
@@ -970,6 +1015,15 @@ export function createBuilderPanel(
   cameraNavToggleButton.addEventListener("click", () => {
     toggleCameraNavigationMode();
   });
+
+  for (const button of transformModeButtons) {
+    button.addEventListener("click", () => {
+      const nextMode = button.dataset.transformMode;
+      if (nextMode === "move" || nextMode === "rotate" || nextMode === "scale") {
+        setTransformMode(nextMode);
+      }
+    });
+  }
 
   advancedToolsToggleButton.addEventListener("click", () => {
     setAdvancedToolsOpen(!advancedToolsOpen);
