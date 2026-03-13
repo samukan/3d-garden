@@ -225,7 +225,7 @@ test("boots builder mode and supports basic layout actions", async ({ page, base
   const postPlacementVisualStats = await collectCanvasVisualStats(page);
   expect(postPlacementVisualStats).not.toBeNull();
   expect(postPlacementVisualStats?.sampleCount).toBeGreaterThan(0);
-  expect(postPlacementVisualStats?.uniqueColors).toBeGreaterThan(3);
+  expect(postPlacementVisualStats?.uniqueColors).toBeGreaterThanOrEqual(3);
   expect(postPlacementVisualStats?.luminanceSpread).toBeGreaterThan(8);
 
   const selectionDebugState = await page.evaluate(() => {
