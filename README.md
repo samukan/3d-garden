@@ -137,14 +137,16 @@ Important caveat for this specific file:
 - On a fresh browser/device/deployment, it will still open, but many objects may be skipped because those local uploads are not present.
 
 To provide a reproducible built-in-only example, this repo also includes:
+swg file includes used assets aswell so i recommed using that. The json file just imports the preloaded assets inside /public
 
 - `skill-garden-reviewer-safe-world-v1-2026-03-13.json`
+- `skill-garden-sgw-test1-2026-03-13T08-37-12-413Z.swg`
 
 This reviewer-safe file is designed to render on any fresh environment that has this repo's committed built-in assets.
 
 ## Vercel Deployment (First Public Link)
 
-Live demo (placeholder): [Replace with your Vercel URL](https://your-vercel-project-url.vercel.app)
+Live demo (placeholder): https://3d-garden-virid.vercel.app/
 
 Expected Vercel build settings for this repo:
 
