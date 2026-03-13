@@ -46,6 +46,11 @@ test("boots builder mode and supports basic layout actions", async ({ page, base
     timeout: 20_000
   });
   await expect(page.locator("#builder-selection-summary")).toContainText("No object selected");
+  await page.locator("#renderCanvas").click();
+  await page.keyboard.press("c");
+  await expect(page.locator("#builder-camera-nav-toggle")).toHaveText("Camera Nav Mode");
+  await page.keyboard.press("c");
+  await expect(page.locator("#builder-camera-nav-toggle")).toHaveText("Object Edit Mode");
 
   const libraryBoundsBefore = await libraryPanel.boundingBox();
   const resizeBounds = await resizeHandle.boundingBox();

@@ -531,8 +531,14 @@ export function createBuilderPanel(
     cameraNavToggleButton.classList.toggle("builder-button-primary", cameraNavigationEnabled);
     cameraNavToggleButton.textContent = cameraNavigationEnabled ? "Camera Nav Mode" : "Object Edit Mode";
     cameraNavToggleButton.title = cameraNavigationEnabled
-      ? "Camera navigation is enabled. Drag to orbit and use the wheel to zoom."
-      : "Object edit mode is enabled. Camera navigation is locked.";
+      ? "Camera navigation is enabled. Drag to orbit and use the wheel to zoom. Shortcut: C."
+      : "Object edit mode is enabled. Camera navigation is locked. Shortcut: C.";
+  };
+
+  const toggleCameraNavigationMode = (): void => {
+    const nextEnabled = !sceneBuilder.isCameraNavigationEnabled();
+    sceneBuilder.setCameraNavigationEnabled(nextEnabled);
+    renderCameraMode();
   };
 
   const render = (): void => {
@@ -663,6 +669,12 @@ export function createBuilderPanel(
       return;
     }
 
+    if (key === "c") {
+      event.preventDefault();
+      toggleCameraNavigationMode();
+      return;
+    }
+
     if (key === "escape") {
       event.preventDefault();
       sceneBuilder.selectObjectById(null);
@@ -735,9 +747,7 @@ export function createBuilderPanel(
   });
 
   cameraNavToggleButton.addEventListener("click", () => {
-    const nextEnabled = !sceneBuilder.isCameraNavigationEnabled();
-    sceneBuilder.setCameraNavigationEnabled(nextEnabled);
-    renderCameraMode();
+    toggleCameraNavigationMode();
   });
 
   advancedToolsToggleButton.addEventListener("click", () => {
