@@ -156,6 +156,59 @@
   grid-column: 4;
 }
 
+.builder-side-toggle {
+  pointer-events: auto;
+  grid-row: 2;
+  align-self: start;
+  justify-self: center;
+  min-width: 2rem;
+  width: 2rem;
+  height: 3rem;
+  padding: 0;
+  margin-top: var(--space-6);
+  border-radius: var(--radius-pill);
+  z-index: var(--z-builder-controls);
+}
+
+.builder-side-toggle-library {
+  grid-column: 3;
+  justify-self: start;
+  transform: translateX(-50%);
+}
+
+.builder-side-toggle-inspector {
+  grid-column: 3;
+  justify-self: end;
+  transform: translateX(50%);
+}
+
+.builder-workspace.is-library-collapsed {
+  grid-template-columns: 0 0 minmax(0, 1fr) minmax(19rem, 25rem);
+}
+
+.builder-workspace.is-inspector-collapsed {
+  grid-template-columns: minmax(16rem, var(--builder-library-width)) 10px minmax(0, 1fr) 0;
+}
+
+.builder-workspace.is-library-collapsed.is-inspector-collapsed {
+  grid-template-columns: 0 0 minmax(0, 1fr) 0;
+}
+
+.builder-workspace.is-library-collapsed .builder-library-panel,
+.builder-workspace.is-inspector-collapsed .builder-inspector-panel {
+  display: none;
+}
+
+.builder-workspace.is-library-collapsed .builder-resize-handle {
+  display: none;
+}
+
+.builder-workspace.is-library-collapsed .builder-rollout-panel {
+  display: none !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
 .builder-shell-panel {
   pointer-events: auto;
   display: flex;
@@ -301,6 +354,10 @@
 
   .builder-shell-panel {
     max-height: none;
+  }
+
+  .builder-side-toggle {
+    display: none;
   }
 
   .builder-center-spacer,

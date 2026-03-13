@@ -211,6 +211,27 @@ export function createBuilderPanel(
     throw new Error("Builder panel could not find the split layout containers.");
   }
 
+  element.querySelector("#builder-toggle-library-panel")?.remove();
+  element.querySelector("#builder-toggle-inspector-panel")?.remove();
+
+  const libraryPanelToggleButton = document.createElement("button");
+  libraryPanelToggleButton.id = "builder-toggle-library-panel";
+  libraryPanelToggleButton.className =
+    "ui-button builder-button builder-side-toggle builder-side-toggle-library";
+  libraryPanelToggleButton.type = "button";
+  libraryPanelToggleButton.setAttribute("aria-controls", "builder-library-panel");
+  libraryPanelToggleButton.setAttribute("aria-expanded", "true");
+
+  const inspectorPanelToggleButton = document.createElement("button");
+  inspectorPanelToggleButton.id = "builder-toggle-inspector-panel";
+  inspectorPanelToggleButton.className =
+    "ui-button builder-button builder-side-toggle builder-side-toggle-inspector";
+  inspectorPanelToggleButton.type = "button";
+  inspectorPanelToggleButton.setAttribute("aria-controls", "builder-inspector-panel");
+  inspectorPanelToggleButton.setAttribute("aria-expanded", "true");
+
+  element.append(libraryPanelToggleButton, inspectorPanelToggleButton);
+
   topBar.innerHTML = topBarMarkup;
   libraryPanel.innerHTML = libraryPanelMarkup;
   inspectorPanel.innerHTML = inspectorPanelMarkup;
@@ -312,6 +333,8 @@ export function createBuilderPanel(
   let cameraNavigationEnabled = sceneBuilder.isCameraNavigationEnabled();
   let advancedToolsOpen = false;
   let assetRolloutDismissed = false;
+  let libraryPanelCollapsed = false;
+  let inspectorPanelCollapsed = false;
 
   const transformInputs = [posXInput, posYInput, posZInput, rotYInput, scaleInput];
   const manipulationButtons = [
@@ -325,9 +348,40 @@ export function createBuilderPanel(
     element.style.setProperty("--builder-library-width", `${clampLibraryWidth(width)}px`);
   };
 
+  const renderSidePanelToggles = (): void => {
+    element.classList.toggle("is-library-collapsed", libraryPanelCollapsed);
+    element.classList.toggle("is-inspector-collapsed", inspectorPanelCollapsed);
+
+    libraryPanelToggleButton.textContent = libraryPanelCollapsed ? ">" : "<";
+    libraryPanelToggleButton.setAttribute("aria-expanded", String(!libraryPanelCollapsed));
+    libraryPanelToggleButton.setAttribute(
+      "aria-label",
+      libraryPanelCollapsed ? "Show asset library panel" : "Hide asset library panel"
+    );
+    libraryPanelToggleButton.title = libraryPanelCollapsed ? "Show asset library panel" : "Hide asset library panel";
+
+    inspectorPanelToggleButton.textContent = inspectorPanelCollapsed ? "<" : ">";
+    inspectorPanelToggleButton.setAttribute("aria-expanded", String(!inspectorPanelCollapsed));
+    inspectorPanelToggleButton.setAttribute(
+      "aria-label",
+      inspectorPanelCollapsed ? "Show inspector panel" : "Hide inspector panel"
+    );
+    inspectorPanelToggleButton.title = inspectorPanelCollapsed ? "Show inspector panel" : "Hide inspector panel";
+
+    if (libraryPanelCollapsed) {
+      assetRolloutDismissed = true;
+      rolloutPanel.classList.remove("is-visible");
+    }
+  };
+
   const syncResponsiveResizeState = (): void => {
     if (window.innerWidth <= MOBILE_BREAKPOINT) {
       element.style.removeProperty("--builder-library-width");
+      if (libraryPanelCollapsed || inspectorPanelCollapsed) {
+        libraryPanelCollapsed = false;
+        inspectorPanelCollapsed = false;
+        renderSidePanelToggles();
+      }
       return;
     }
 
@@ -373,6 +427,11 @@ export function createBuilderPanel(
 
   const renderAssetRollout = (snapshot: BuilderSceneSnapshot): void => {
     ensureSelectedAsset(snapshot);
+
+    if (libraryPanelCollapsed) {
+      rolloutPanel.classList.remove("is-visible");
+      return;
+    }
 
     const selectedItem = snapshot.palette.find((item) => item.assetId === selectedAssetId);
 
@@ -680,6 +739,16 @@ export function createBuilderPanel(
       sceneBuilder.selectObjectById(null);
     }
   };
+
+  libraryPanelToggleButton.addEventListener("click", () => {
+    libraryPanelCollapsed = !libraryPanelCollapsed;
+    renderSidePanelToggles();
+  });
+
+  inspectorPanelToggleButton.addEventListener("click", () => {
+    inspectorPanelCollapsed = !inspectorPanelCollapsed;
+    renderSidePanelToggles();
+  });
 
   paletteElement.addEventListener("click", (event) => {
     const target = event.target;
@@ -996,7 +1065,7 @@ export function createBuilderPanel(
   });
 
   const handlePointerMove = (event: PointerEvent): void => {
-    if (window.innerWidth <= MOBILE_BREAKPOINT) {
+    if (window.innerWidth <= MOBILE_BREAKPOINT || libraryPanelCollapsed) {
       return;
     }
 
@@ -1011,7 +1080,7 @@ export function createBuilderPanel(
   };
 
   resizeHandle.addEventListener("pointerdown", (event) => {
-    if (window.innerWidth <= MOBILE_BREAKPOINT) {
+    if (window.innerWidth <= MOBILE_BREAKPOINT || libraryPanelCollapsed) {
       return;
     }
 
@@ -1028,6 +1097,7 @@ export function createBuilderPanel(
   window.addEventListener("resize", handleResize);
   window.addEventListener("keydown", handleShortcutKeyDown);
   syncResponsiveResizeState();
+  renderSidePanelToggles();
   setActiveLibraryTab(activeLibraryTab);
   setAdvancedToolsOpen(false);
   maybeDebugUploadAsset();
@@ -1037,6 +1107,8 @@ export function createBuilderPanel(
     document.removeEventListener("pointerdown", handleDocumentPointerDown);
     window.removeEventListener("resize", handleResize);
     window.removeEventListener("keydown", handleShortcutKeyDown);
+    libraryPanelToggleButton.remove();
+    inspectorPanelToggleButton.remove();
   };
 
   render();

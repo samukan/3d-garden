@@ -36,7 +36,10 @@ test("boots builder mode and supports basic layout actions", async ({ page, base
   await expect(page.locator("#builder-back-to-menu")).toBeVisible();
   await expect(page.locator("#builder-camera-nav-toggle")).toBeVisible();
   await expect(page.locator("#builder-advanced-tools-toggle")).toBeVisible();
+  await expect(page.locator("#builder-toggle-library-panel")).toBeVisible();
+  await expect(page.locator("#builder-toggle-inspector-panel")).toBeVisible();
   const libraryPanel = page.locator("#builder-library-panel");
+  const inspectorPanel = page.locator("#builder-inspector-panel");
   const resizeHandle = page.locator("#builder-resize-handle");
 
   await expect(libraryPanel).toBeVisible();
@@ -51,6 +54,14 @@ test("boots builder mode and supports basic layout actions", async ({ page, base
   await expect(page.locator("#builder-camera-nav-toggle")).toHaveText("Camera Nav Mode");
   await page.keyboard.press("c");
   await expect(page.locator("#builder-camera-nav-toggle")).toHaveText("Object Edit Mode");
+  await page.locator("#builder-toggle-library-panel").click();
+  await expect(libraryPanel).toBeHidden();
+  await page.locator("#builder-toggle-library-panel").click();
+  await expect(libraryPanel).toBeVisible();
+  await page.locator("#builder-toggle-inspector-panel").click();
+  await expect(inspectorPanel).toBeHidden();
+  await page.locator("#builder-toggle-inspector-panel").click();
+  await expect(inspectorPanel).toBeVisible();
 
   const libraryBoundsBefore = await libraryPanel.boundingBox();
   const resizeBounds = await resizeHandle.boundingBox();
