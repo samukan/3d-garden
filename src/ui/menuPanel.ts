@@ -15,6 +15,7 @@ export interface CreateMenuPanelOptions {
   onBuildNew: () => void;
   onDeleteWorld: (worldId: string) => void;
   onEditWorld: (worldId: string) => void;
+  onOpenWorldPackageInViewer: (file: File) => Promise<{ success: boolean; error?: string }>;
   onViewWorld: (worldId: string) => void;
   onOpenWorldJsonInViewer: (input: {
     fileName: string;
@@ -90,7 +91,9 @@ export function createMenuPanel(element: HTMLElement, options: CreateMenuPanelOp
           <div class="menu-primary-actions">
             <button id="menu-build-new" class="ui-button menu-secondary-button" type="button">Build New World</button>
             <button id="menu-open-json-viewer" class="ui-button menu-secondary-button" type="button">Open JSON In Viewer</button>
+            <button id="menu-open-package-viewer" class="ui-button menu-secondary-button" type="button">Open Package In Viewer</button>
             <input id="menu-open-json-input" type="file" accept=".json,application/json" hidden />
+            <input id="menu-open-package-input" type="file" accept=".sgw,application/octet-stream,application/zip" hidden />
           </div>
           ${state.notice ? `<p class="menu-notice">${escapeHtml(state.notice)}</p>` : ""}
         </section>
@@ -113,6 +116,13 @@ export function createMenuPanel(element: HTMLElement, options: CreateMenuPanelOp
     const openJsonButton = target.closest<HTMLButtonElement>("#menu-open-json-viewer");
     if (openJsonButton) {
       const input = element.querySelector<HTMLInputElement>("#menu-open-json-input");
+      input?.click();
+      return;
+    }
+
+    const openPackageButton = target.closest<HTMLButtonElement>("#menu-open-package-viewer");
+    if (openPackageButton) {
+      const input = element.querySelector<HTMLInputElement>("#menu-open-package-input");
       input?.click();
       return;
     }
@@ -146,7 +156,7 @@ export function createMenuPanel(element: HTMLElement, options: CreateMenuPanelOp
 
   const handleChange = (event: Event): void => {
     const target = event.target;
-    if (!(target instanceof HTMLInputElement) || target.id !== "menu-open-json-input") {
+    if (!(target instanceof HTMLInputElement)) {
       return;
     }
 
@@ -155,35 +165,64 @@ export function createMenuPanel(element: HTMLElement, options: CreateMenuPanelOp
       return;
     }
 
-    void file
-      .text()
-      .then((content) =>
-        options.onOpenWorldJsonInViewer({
-          fileName: file.name,
-          content
-        })
-      )
-      .then((result) => {
-        if (result.success) {
-          return;
-        }
+    if (target.id === "menu-open-json-input") {
+      void file
+        .text()
+        .then((content) =>
+          options.onOpenWorldJsonInViewer({
+            fileName: file.name,
+            content
+          })
+        )
+        .then((result) => {
+          if (result.success) {
+            return;
+          }
 
-        state = {
-          ...state,
-          notice: result.error ?? "World JSON could not be opened."
-        };
-        render();
-      })
-      .catch((error) => {
-        state = {
-          ...state,
-          notice: error instanceof Error ? error.message : "World JSON could not be opened."
-        };
-        render();
-      })
-      .finally(() => {
-        target.value = "";
-      });
+          state = {
+            ...state,
+            notice: result.error ?? "World JSON could not be opened."
+          };
+          render();
+        })
+        .catch((error) => {
+          state = {
+            ...state,
+            notice: error instanceof Error ? error.message : "World JSON could not be opened."
+          };
+          render();
+        })
+        .finally(() => {
+          target.value = "";
+        });
+      return;
+    }
+
+    if (target.id === "menu-open-package-input") {
+      void options
+        .onOpenWorldPackageInViewer(file)
+        .then((result) => {
+          if (result.success) {
+            return;
+          }
+
+          state = {
+            ...state,
+            notice: result.error ?? "World package could not be opened."
+          };
+          render();
+        })
+        .catch((error) => {
+          state = {
+            ...state,
+            notice: error instanceof Error ? error.message : "World package could not be opened."
+          };
+          render();
+        })
+        .finally(() => {
+          target.value = "";
+        });
+    }
   };
 
   element.hidden = false;

@@ -4,6 +4,7 @@ import { activeAppRoute, buildAppHref, navigateToRoute } from "./appMode";
 import { parseBuilderLayoutDocument, serializeBuilderLayout } from "./builder/sceneLayoutSerializer";
 import { createSceneBuilder } from "./builder/sceneBuilder";
 import { initEngine } from "./engine/initEngine";
+import { startMenuBackgroundRuntime } from "./menu/menuBackgroundRuntime";
 import { registerCoreShaders } from "./engine/registerCoreShaders";
 import { createBuilderPanel } from "./ui/builderPanel";
 import { createMenuPanel } from "./ui/menuPanel";
@@ -18,6 +19,7 @@ import {
 import { saveViewerDraft } from "./storage/viewerDraftStore";
 import { browserDebugError, logBrowserDebug } from "./utils/browserDebug";
 import { bootstrapViewerMode } from "./viewer/bootstrapViewerMode";
+import { importWorldPackageFile } from "./world-package/worldPackageIO";
 
 const EMPTY_LAYOUT_JSON = serializeBuilderLayout([]);
 
@@ -82,7 +84,7 @@ async function bootstrap(): Promise<void> {
     appTitle.textContent = "Skill Garden";
     appCopy.textContent = "Open a browser-saved world in read-only mode, or start a new build when you want to create something fresh.";
 
-    canvas.hidden = true;
+    canvas.hidden = false;
     statusElement.hidden = true;
     navActionsElement.hidden = true;
     editLinkElement.hidden = true;
@@ -145,6 +147,25 @@ async function bootstrap(): Promise<void> {
         navigateToRoute({ mode: "viewer", worldJsonId: draft.id });
         return { success: true };
       },
+      onOpenWorldPackageInViewer: async (file) => {
+        try {
+          const importedWorldPackage = await importWorldPackageFile(file);
+          const nextName = importedWorldPackage.worldName.trim() || file.name.replace(/\.sgw$/i, "").trim() || "Imported World";
+          const draft = saveViewerDraft({
+            layout: importedWorldPackage.layoutJson,
+            name: nextName,
+            objectCount: importedWorldPackage.layoutRecords.length
+          });
+
+          navigateToRoute({ mode: "viewer", worldJsonId: draft.id });
+          return { success: true };
+        } catch (error) {
+          return {
+            success: false,
+            error: error instanceof Error ? `${file.name} could not be opened: ${error.message}` : `${file.name} could not be opened.`
+          };
+        }
+      },
       state: {
         ...getMenuState(notice)
       }
@@ -155,6 +176,21 @@ async function bootstrap(): Promise<void> {
 
   if (activeAppRoute.mode === "menu") {
     renderMenuMode(activeAppRoute.notice);
+    void startMenuBackgroundRuntime({
+      canvas,
+      enableSubtleMotion: false
+    }).then((runtime) => {
+      window.addEventListener(
+        "beforeunload",
+        () => {
+          runtime.dispose();
+        },
+        { once: true }
+      );
+    }).catch((error) => {
+      browserDebugError("menu-background:start:error", error);
+      console.warn("[menu-background] Runtime start failed. Continuing with static fallback.", error);
+    });
     return;
   }
 

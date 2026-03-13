@@ -19,6 +19,33 @@ interface UploadedAssetRecord {
   updatedAt?: string;
 }
 
+export interface UploadedAssetSnapshot {
+  blob: Blob;
+  category: string;
+  createdAt: string;
+  fileName: string;
+  fileSize: number;
+  id: string;
+  label: string;
+  mimeType: string;
+  rotationY: number;
+  scale: number;
+  updatedAt: string;
+}
+
+export interface SaveImportedUploadedAssetInput {
+  blob: Blob;
+  category?: string;
+  createdAt?: string;
+  fileName: string;
+  id: string;
+  label: string;
+  mimeType?: string;
+  rotationY?: number;
+  scale?: number;
+  updatedAt?: string;
+}
+
 function openDatabase(): Promise<IDBDatabase> {
   if (typeof window === "undefined" || typeof window.indexedDB === "undefined") {
     return Promise.reject(new Error("Local asset uploads require IndexedDB support in this browser."));
@@ -82,6 +109,10 @@ function generateUploadedAssetId(): string {
   return `local-uploaded:${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
+export function createUploadedAssetId(): string {
+  return generateUploadedAssetId();
+}
+
 function titleCaseLabel(input: string): string {
   return input
     .split(/\s+/)
@@ -103,6 +134,16 @@ function assertGlbFile(file: File): void {
 
   if (file.size <= 0) {
     throw new Error("The selected .glb file is empty.");
+  }
+}
+
+function assertImportedGlbBlob(blob: Blob, fileName: string): void {
+  if (!fileName.toLowerCase().endsWith(".glb")) {
+    throw new Error("Imported uploaded assets must be .glb files.");
+  }
+
+  if (blob.size <= 0) {
+    throw new Error("Imported uploaded asset is empty.");
   }
 }
 
@@ -149,12 +190,43 @@ function toAssetDefinition(record: UploadedAssetRecord): AssetDefinition {
   };
 }
 
+function toUploadedAssetSnapshot(record: UploadedAssetRecord): UploadedAssetSnapshot {
+  const { createdAt, updatedAt } = resolveRecordTimestamps(record);
+
+  return {
+    blob: record.blob,
+    category: normalizeUploadedAssetCategory(record.category),
+    createdAt,
+    fileName: record.fileName,
+    fileSize: record.fileSize,
+    id: record.id,
+    label: record.label,
+    mimeType: record.mimeType,
+    rotationY: record.rotationY,
+    scale: record.scale,
+    updatedAt
+  };
+}
+
 export async function listUploadedAssetDefinitions(): Promise<AssetDefinition[]> {
   const records = await withStore<UploadedAssetRecord[]>("readonly", (store) => store.getAll());
   return records
     .slice()
     .sort((left, right) => left.label.localeCompare(right.label))
     .map(toAssetDefinition);
+}
+
+export async function listUploadedAssetSnapshots(): Promise<UploadedAssetSnapshot[]> {
+  const records = await withStore<UploadedAssetRecord[]>("readonly", (store) => store.getAll());
+  return records
+    .slice()
+    .sort((left, right) => left.label.localeCompare(right.label))
+    .map(toUploadedAssetSnapshot);
+}
+
+export async function getUploadedAssetSnapshot(assetId: string): Promise<UploadedAssetSnapshot | null> {
+  const record = await withStore<UploadedAssetRecord | undefined>("readonly", (store) => store.get(assetId));
+  return record ? toUploadedAssetSnapshot(record) : null;
 }
 
 export async function getUploadedAssetBlob(assetId: string): Promise<Blob | null> {
@@ -203,6 +275,42 @@ export async function saveUploadedAsset(
     rotationY: 0,
     scale: 1,
     updatedAt: now
+  };
+
+  await withStore<IDBValidKey>("readwrite", (store) => store.put(record));
+  return toAssetDefinition(record);
+}
+
+export async function saveImportedUploadedAsset(input: SaveImportedUploadedAssetInput): Promise<AssetDefinition> {
+  const normalizedId = input.id.trim();
+  if (!normalizedId) {
+    throw new Error("Imported uploaded asset id is required.");
+  }
+
+  const normalizedFileName = input.fileName.trim();
+  if (!normalizedFileName) {
+    throw new Error("Imported uploaded asset filename is required.");
+  }
+
+  assertImportedGlbBlob(input.blob, normalizedFileName);
+  const now = new Date().toISOString();
+  const createdAt = normalizeIsoTimestamp(input.createdAt, now);
+  const updatedAt = normalizeIsoTimestamp(input.updatedAt, createdAt);
+  const rotationY =
+    typeof input.rotationY === "number" && Number.isFinite(input.rotationY) ? input.rotationY : 0;
+  const scale = typeof input.scale === "number" && Number.isFinite(input.scale) && input.scale > 0 ? input.scale : 1;
+  const record: UploadedAssetRecord = {
+    blob: input.blob,
+    category: normalizeUploadedAssetCategory(input.category),
+    createdAt,
+    fileName: normalizedFileName,
+    fileSize: input.blob.size,
+    id: normalizedId,
+    label: input.label.trim() || createDefaultLabel(normalizedFileName),
+    mimeType: input.mimeType?.trim() || "model/gltf-binary",
+    rotationY,
+    scale,
+    updatedAt
   };
 
   await withStore<IDBValidKey>("readwrite", (store) => store.put(record));

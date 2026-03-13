@@ -21,6 +21,7 @@ import type { AssetDefinition, AssetId } from "../generation/natureKitAssetManif
 import {
   clearUploadedAssets,
   deleteUploadedAsset,
+  listUploadedAssetSnapshots,
   normalizeUploadedAssetCategory,
   renameUploadedAssetCategory as renameUploadedAssetCategoryInStore,
   saveUploadedAsset
@@ -28,6 +29,7 @@ import {
 import { degreesToRadians, radiansToDegrees } from "../utils/angle";
 import { isBrowserDebugEnabled, logBrowserDebug } from "../utils/browserDebug";
 import { enableMeshVertexColors } from "../utils/meshColors";
+import { createWorldPackageFile, importWorldPackageFile } from "../world-package/worldPackageIO";
 import { getBuilderPalette } from "./builderPalette";
 import { parseBuilderLayoutDocument, serializeBuilderLayout } from "./sceneLayoutSerializer";
 import { createBuilderSceneState } from "./sceneBuilderState";
@@ -74,7 +76,16 @@ export interface SceneBuilderController {
   deleteObjectById: (objectId: string) => void;
   duplicateSelectedObject: () => Promise<void>;
   exportLayout: () => string;
+  exportWorldPackage: (worldName: string) => Promise<{
+    fileName: string;
+    blob: Blob;
+    objectCount: number;
+    uploadedAssetCount: number;
+  }>;
   getSnapshot: () => BuilderSceneSnapshot;
+  importWorldPackage: (
+    file: File
+  ) => Promise<{ success: boolean; uploadedAssetCount?: number; remappedAssetCount?: number; error?: string }>;
   importLayout: (input: string, options?: ImportLayoutOptions) => Promise<{ success: boolean; error?: string }>;
   isCameraNavigationEnabled: () => boolean;
   getTransformMode: () => BuilderTransformMode;
@@ -944,6 +955,72 @@ export async function createSceneBuilder({
 
   const exportLayout = (): string => serializeBuilderLayout(state.layoutRecords.map(cloneLayoutRecord));
 
+  const exportWorldPackage = async (
+    worldName: string
+  ): Promise<{
+    fileName: string;
+    blob: Blob;
+    objectCount: number;
+    uploadedAssetCount: number;
+  }> => {
+    const layoutRecords = state.layoutRecords.map(cloneLayoutRecord);
+    const referencedAssetIds = Array.from(new Set(layoutRecords.map((record) => record.assetId)));
+    const uploadedSnapshots = await listUploadedAssetSnapshots();
+    const uploadedSnapshotsById = new Map(uploadedSnapshots.map((snapshot) => [snapshot.id, snapshot]));
+    const builtInAssets: Array<{ id: string; label: string }> = [];
+    const uploadedAssets: Array<{
+      blob: Blob;
+      category: string;
+      fileName: string;
+      id: string;
+      label: string;
+      mimeType: string;
+      rotationY: number;
+      scale: number;
+      uploadedAt: string;
+    }> = [];
+
+    for (const assetId of referencedAssetIds) {
+      const definition = assetDefinitions.get(assetId);
+      if (!definition) {
+        throw new Error(`Cannot export world package because asset is unavailable: ${assetId}.`);
+      }
+
+      if (definition.source.type === "uploaded") {
+        const snapshot = uploadedSnapshotsById.get(assetId);
+        if (!snapshot) {
+          throw new Error(`Cannot export world package because uploaded asset is missing locally: ${assetId}.`);
+        }
+
+        uploadedAssets.push({
+          blob: snapshot.blob,
+          category: snapshot.category,
+          fileName: snapshot.fileName,
+          id: snapshot.id,
+          label: snapshot.label,
+          mimeType: snapshot.mimeType,
+          rotationY: snapshot.rotationY,
+          scale: snapshot.scale,
+          uploadedAt: snapshot.createdAt
+        });
+        continue;
+      }
+
+      builtInAssets.push({
+        id: definition.id,
+        label: definition.label
+      });
+    }
+
+    return createWorldPackageFile({
+      builtInAssets,
+      exportedFromAppVersion: import.meta.env.VITE_APP_VERSION ?? "0.1.0",
+      layoutRecords,
+      uploadedAssets,
+      worldName
+    });
+  };
+
   const importLayout = async (
     input: string,
     options?: ImportLayoutOptions
@@ -1018,6 +1095,52 @@ export async function createSceneBuilder({
     return {
       success: true
     };
+  };
+
+  const importWorldPackage = async (
+    file: File
+  ): Promise<{ success: boolean; uploadedAssetCount?: number; remappedAssetCount?: number; error?: string }> => {
+    if (historyRestoreInFlight) {
+      return {
+        success: false,
+        error: "History restore is in progress."
+      };
+    }
+
+    state.statusMessage = `Importing world package ${file.name}...`;
+    notify();
+
+    try {
+      const packageImport = await importWorldPackageFile(file);
+      await refreshAssetCatalog({ notify: false });
+      const importedLayout = await importLayout(packageImport.layoutJson);
+      if (!importedLayout.success) {
+        return importedLayout;
+      }
+
+      const remapSuffix = packageImport.remappedAssetCount
+        ? ` Remapped ${packageImport.remappedAssetCount} conflicting uploaded asset id${packageImport.remappedAssetCount === 1 ? "" : "s"}.`
+        : "";
+      state.statusMessage = `Imported world package "${packageImport.worldName}". Restored ${
+        packageImport.uploadedAssetCount
+      } uploaded asset${packageImport.uploadedAssetCount === 1 ? "" : "s"} (${packageImport.importedUploadedAssetCount} new, ${
+        packageImport.reusedUploadedAssetCount
+      } reused).${remapSuffix}`;
+      notify();
+      return {
+        success: true,
+        uploadedAssetCount: packageImport.uploadedAssetCount,
+        remappedAssetCount: packageImport.remappedAssetCount
+      };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "World package could not be imported.";
+      state.statusMessage = message;
+      notify();
+      return {
+        success: false,
+        error: message
+      };
+    }
   };
 
   const undo = async (): Promise<boolean> => {
@@ -1429,7 +1552,9 @@ export async function createSceneBuilder({
     deleteObjectById,
     duplicateSelectedObject,
     exportLayout,
+    exportWorldPackage,
     getSnapshot,
+    importWorldPackage,
     importLayout,
     isCameraNavigationEnabled: () => developmentCamera.isNavigationEnabled(),
     getTransformMode: () => transformMode,

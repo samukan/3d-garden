@@ -57,6 +57,11 @@ const topBarMarkup = `
       <button id="builder-import" class="ui-button builder-button builder-button-block" type="button">Import JSON</button>
     </div>
     <div class="builder-action-row builder-action-row-split">
+      <button id="builder-download-world-package" class="ui-button builder-button builder-button-block" type="button">Download Package</button>
+      <button id="builder-upload-world-package" class="ui-button builder-button builder-button-block" type="button">Upload Package</button>
+      <input id="builder-upload-world-package-input" type="file" accept=".sgw,application/octet-stream,application/zip" hidden />
+    </div>
+    <div class="builder-action-row builder-action-row-split">
       <button id="builder-download-world-json" class="ui-button builder-button builder-button-block" type="button">Download JSON</button>
       <button id="builder-upload-world-json" class="ui-button builder-button builder-button-block" type="button">Upload JSON</button>
       <input id="builder-upload-world-json-input" type="file" accept=".json,application/json" hidden />
@@ -299,6 +304,9 @@ export function createBuilderPanel(
   const deleteButton = inspectorPanel.querySelector<HTMLButtonElement>("#builder-delete");
   const exportButton = topBar.querySelector<HTMLButtonElement>("#builder-export");
   const importButton = topBar.querySelector<HTMLButtonElement>("#builder-import");
+  const downloadWorldPackageButton = topBar.querySelector<HTMLButtonElement>("#builder-download-world-package");
+  const uploadWorldPackageButton = topBar.querySelector<HTMLButtonElement>("#builder-upload-world-package");
+  const uploadWorldPackageInput = topBar.querySelector<HTMLInputElement>("#builder-upload-world-package-input");
   const downloadWorldJsonButton = topBar.querySelector<HTMLButtonElement>("#builder-download-world-json");
   const uploadWorldJsonButton = topBar.querySelector<HTMLButtonElement>("#builder-upload-world-json");
   const uploadWorldJsonInput = topBar.querySelector<HTMLInputElement>("#builder-upload-world-json-input");
@@ -342,6 +350,9 @@ export function createBuilderPanel(
     !deleteButton ||
     !exportButton ||
     !importButton ||
+    !downloadWorldPackageButton ||
+    !uploadWorldPackageButton ||
+    !uploadWorldPackageInput ||
     !downloadWorldJsonButton ||
     !uploadWorldJsonButton ||
     !uploadWorldJsonInput ||
@@ -1263,7 +1274,69 @@ export function createBuilderPanel(
     link.remove();
     URL.revokeObjectURL(objectUrl);
 
-    showToast(`Downloaded ${fileName}.`, "success");
+    const includesUploadedAssets = layoutJson.includes("\"assetId\": \"local-uploaded:");
+    const portabilityNote = includesUploadedAssets
+      ? " JSON format is layout-only and will not include uploaded asset binaries."
+      : "";
+    showToast(`Downloaded ${fileName}.${portabilityNote}`, includesUploadedAssets ? "info" : "success");
+  });
+
+  downloadWorldPackageButton.addEventListener("click", () => {
+    const targetWorldName = worldNameDraft || worldState.currentWorldName || "untitled-world";
+    void sceneBuilder
+      .exportWorldPackage(targetWorldName)
+      .then((result) => {
+        const objectUrl = URL.createObjectURL(result.blob);
+
+        const link = document.createElement("a");
+        link.href = objectUrl;
+        link.download = result.fileName;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        URL.revokeObjectURL(objectUrl);
+
+        const uploadSuffix = result.uploadedAssetCount
+          ? ` Included ${result.uploadedAssetCount} uploaded asset${result.uploadedAssetCount === 1 ? "" : "s"}.`
+          : "";
+        showToast(`Downloaded ${result.fileName}.${uploadSuffix}`, "success");
+      })
+      .catch((error) => {
+        const message = error instanceof Error ? error.message : "World package could not be created.";
+        showToast(message, "error");
+      });
+  });
+
+  uploadWorldPackageButton.addEventListener("click", () => {
+    uploadWorldPackageInput.click();
+  });
+
+  uploadWorldPackageInput.addEventListener("change", () => {
+    const file = uploadWorldPackageInput.files?.[0];
+    if (!file) {
+      return;
+    }
+
+    void sceneBuilder
+      .importWorldPackage(file)
+      .then((result) => {
+        if (!result.success) {
+          showToast(result.error ?? "World package could not be imported.", "error");
+          return;
+        }
+
+        const remapSuffix = result.remappedAssetCount
+          ? ` Remapped ${result.remappedAssetCount} conflicting asset id${result.remappedAssetCount === 1 ? "" : "s"}.`
+          : "";
+        showToast(`Imported ${file.name}.${remapSuffix}`, "success");
+      })
+      .catch((error) => {
+        const message = error instanceof Error ? error.message : "World package could not be imported.";
+        showToast(message, "error");
+      })
+      .finally(() => {
+        uploadWorldPackageInput.value = "";
+      });
   });
 
   uploadWorldJsonButton.addEventListener("click", () => {

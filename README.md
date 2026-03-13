@@ -20,7 +20,8 @@ This is intentionally a first version: core workflows are working, while cloud a
 
 - Main Menu -> Builder -> Save -> Viewer roundtrip.
 - Browser-local saved worlds.
-- JSON download/upload and "Open JSON in Viewer" flow.
+- Portable world package (`.sgw`) download/upload for uploaded-asset portability.
+- JSON download/upload and "Open JSON in Viewer" flow (legacy layout-only format).
 - Local `.glb` upload support for custom assets.
 - Playwright browser regression checks for core workflows.
 
@@ -36,8 +37,11 @@ This is intentionally a first version: core workflows are working, while cloud a
 - Asset placement and object editing (move/rotate/scale, duplicate/delete).
 - Saved-world management (create, edit, view, delete) in local storage.
 - JSON layout workflows through advanced builder tools.
+- Portable world package workflows through advanced builder tools.
 - JSON file download/upload support.
+- World package (`.sgw`) file download/upload support.
 - Open a world JSON directly in viewer mode from the menu.
+- Open a world package directly in viewer mode from the menu.
 - Upload and categorize local `.glb` assets.
 - Viewer diagnostics for missing/unavailable assets.
 
@@ -68,6 +72,12 @@ Important implication:
 
 - Data is browser- and origin-specific.
 - `worldId` / `worldJsonId` URL links are not globally shareable unless matching local data also exists in that exact browser environment.
+- For portability across fresh environments, use world package export/import instead of legacy layout JSON.
+
+## World File Formats
+
+- `.sgw` (recommended): portable world package zip containing `world.json` + uploaded `.glb` payloads.
+- `.json` (legacy): layout-only world document; references uploaded asset IDs but does not include uploaded binary payloads.
 
 ## Project Structure (Short)
 
@@ -162,7 +172,7 @@ Many parts of this project were relatively new to me, and this first version ref
 ## Known Limitations
 
 - No backend, accounts, or cloud sync in this version.
-- Uploaded assets are local to one browser origin; they are not automatically portable.
+- Legacy JSON exports are layout-only; uploaded assets are not portable in that format.
 - URL-linked worlds depend on local data presence.
 - Initial bundle size is still larger than ideal for slower networks/devices.
 - WebGPU availability is environment-dependent; the app falls back to WebGL.

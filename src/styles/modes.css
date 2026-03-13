@@ -1,5 +1,6 @@
 #app[data-app-mode="menu"] canvas {
-  display: none;
+  display: block;
+  pointer-events: none;
 }
 
 #app[data-app-mode="menu"] .ui-shell {

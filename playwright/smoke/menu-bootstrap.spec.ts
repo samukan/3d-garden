@@ -10,7 +10,7 @@ test("forwards browser console output and page errors", async ({ page, baseURL }
   });
 
   await expect(page.locator("#menu-panel")).toBeVisible();
-  await expect(page.locator("#renderCanvas")).toBeHidden();
+  await expect(page.locator("#renderCanvas")).toBeVisible();
   await expect(page.locator("#menu-build-new")).toBeVisible();
   await expect(page.locator("#app-title")).toHaveText("Skill Garden");
 
