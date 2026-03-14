@@ -1,5 +1,7 @@
 import type { BuilderSceneSnapshot } from "../builder/builderTypes";
 import type {
+  BuilderScreenRect,
+  BuilderSelectionMergeMode,
   BuilderTransformMode,
   SceneBuilderController,
   UploadedAssetBatchUploadResult
@@ -21,6 +23,13 @@ export interface SceneBuilderAdapter {
   setTransformMode: (mode: BuilderTransformMode) => void;
   setCameraNavigationEnabled: (enabled: boolean) => void;
   placeAsset: (assetId: string) => Promise<void>;
+  canStartMarqueeSelectionAt: (clientX: number, clientY: number) => boolean;
+  applyMarqueeSelection: (rect: BuilderScreenRect, mode: BuilderSelectionMergeMode) => void;
+  replaceSelection: (objectIds: string[], primaryObjectId?: string | null) => void;
+  addToSelection: (objectId: string) => void;
+  toggleSelection: (objectId: string) => void;
+  removeFromSelection: (objectId: string) => void;
+  clearSelection: () => void;
   selectObjectById: (objectId: string | null) => void;
   undo: () => Promise<boolean>;
   redo: () => Promise<boolean>;
@@ -87,6 +96,27 @@ export function createSceneBuilderAdapter(
     },
     placeAsset: async (assetId) => {
       await sceneBuilder.placeAsset(assetId);
+    },
+    canStartMarqueeSelectionAt: (clientX, clientY) => {
+      return sceneBuilder.canStartMarqueeSelectionAt(clientX, clientY);
+    },
+    applyMarqueeSelection: (rect, mode) => {
+      sceneBuilder.applyMarqueeSelection(rect, mode);
+    },
+    replaceSelection: (objectIds, primaryObjectId) => {
+      sceneBuilder.replaceSelection(objectIds, primaryObjectId);
+    },
+    addToSelection: (objectId) => {
+      sceneBuilder.addToSelection(objectId);
+    },
+    toggleSelection: (objectId) => {
+      sceneBuilder.toggleSelection(objectId);
+    },
+    removeFromSelection: (objectId) => {
+      sceneBuilder.removeFromSelection(objectId);
+    },
+    clearSelection: () => {
+      sceneBuilder.clearSelection();
     },
     selectObjectById: (objectId) => {
       sceneBuilder.selectObjectById(objectId);

@@ -39,6 +39,9 @@ export interface BuilderSceneSnapshot {
   isReady: boolean;
   palette: BuilderPaletteItem[];
   objects: BuilderPlacedObjectSnapshot[];
+  selectedObjectIds: string[];
+  primarySelectedObjectId: string | null;
+  primarySelectedObject: BuilderSelectedObjectSnapshot | null;
   selectedObjectId: string | null;
   selectedObject: BuilderSelectedObjectSnapshot | null;
   statusMessage: string;

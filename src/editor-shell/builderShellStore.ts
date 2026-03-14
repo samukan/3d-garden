@@ -28,6 +28,8 @@ interface BuilderShellActions {
   toggleCameraNavigation: () => void;
   placeSelectedAsset: () => Promise<void>;
   selectObjectById: (objectId: string | null) => void;
+  selectObjectWithModifiers: (objectId: string, options?: { additive?: boolean; toggle?: boolean }) => void;
+  clearSceneSelection: () => void;
   undo: () => Promise<void>;
   redo: () => Promise<void>;
   uploadAssets: (files: File[], category: string) => Promise<void>;
@@ -132,6 +134,22 @@ export function createBuilderShellStore(adapter: SceneBuilderAdapter) {
     selectObjectById: (objectId) => {
       adapter.selectObjectById(objectId);
     },
+    selectObjectWithModifiers: (objectId, options) => {
+      if (options?.toggle) {
+        adapter.toggleSelection(objectId);
+        return;
+      }
+
+      if (options?.additive) {
+        adapter.addToSelection(objectId);
+        return;
+      }
+
+      adapter.replaceSelection([objectId], objectId);
+    },
+    clearSceneSelection: () => {
+      adapter.clearSelection();
+    },
     undo: async () => {
       await adapter.undo();
     },
@@ -174,7 +192,8 @@ export function createBuilderShellStore(adapter: SceneBuilderAdapter) {
       adapter.updateSelectedTransform(patch);
     },
     nudgeSelectedObject: (axis, delta) => {
-      const selection = get().snapshot.selectedObject;
+      const snapshot = get().snapshot;
+      const selection = snapshot.primarySelectedObject ?? snapshot.selectedObject;
       if (!selection) {
         return;
       }
@@ -187,7 +206,8 @@ export function createBuilderShellStore(adapter: SceneBuilderAdapter) {
       });
     },
     rotateSelectedObject: (delta) => {
-      const selection = get().snapshot.selectedObject;
+      const snapshot = get().snapshot;
+      const selection = snapshot.primarySelectedObject ?? snapshot.selectedObject;
       if (!selection) {
         return;
       }

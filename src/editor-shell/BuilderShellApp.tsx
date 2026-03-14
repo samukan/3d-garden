@@ -6,6 +6,7 @@ import { DEFAULT_UPLOADED_ASSET_CATEGORY } from "../generation/natureKitAssetMan
 import type { BuilderShellStoreState } from "./builderShellStore";
 import { createBuilderShellStore } from "./builderShellStore";
 import type { SceneBuilderAdapter } from "./sceneBuilderAdapter";
+import { isBrowserDebugEnabled, logBrowserDebug } from "../utils/browserDebug";
 
 interface BuilderShellHosts {
   libraryPanel: HTMLElement;
@@ -16,6 +17,26 @@ interface BuilderShellHosts {
 interface BuilderShellAppProps {
   adapter: SceneBuilderAdapter;
   hosts: BuilderShellHosts;
+}
+
+type MarqueeSelectionMode = "replace" | "add" | "toggle";
+
+interface MarqueeRect {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+}
+
+const MARQUEE_DRAG_THRESHOLD_PX = 6;
+
+function createMarqueeRect(startX: number, startY: number, endX: number, endY: number): MarqueeRect {
+  return {
+    left: Math.min(startX, endX),
+    top: Math.min(startY, endY),
+    width: Math.abs(endX - startX),
+    height: Math.abs(endY - startY)
+  };
 }
 
 function isEditableTarget(target: EventTarget | null): boolean {
@@ -92,7 +113,7 @@ export function BuilderShellApp({ adapter, hosts }: BuilderShellAppProps) {
 
       if (key === "escape") {
         event.preventDefault();
-        state.selectObjectById(null);
+        state.clearSceneSelection();
       }
     };
 
@@ -116,6 +137,16 @@ export function BuilderShellApp({ adapter, hosts }: BuilderShellAppProps) {
   const worldStatusTitle = `${worldState.persistenceMessage}${worldState.isDirty ? " Unsaved changes." : ""}`.trim();
 
   const uploadInputRef = useRef<HTMLInputElement | null>(null);
+  const marqueeInteractionRef = useRef<{
+    pointerId: number;
+    startX: number;
+    startY: number;
+    currentX: number;
+    currentY: number;
+    mode: MarqueeSelectionMode;
+    isDragging: boolean;
+  } | null>(null);
+  const [marqueeRect, setMarqueeRect] = useState<MarqueeRect | null>(null);
   const [leftTab, setLeftTab] = useState<"assets" | "hierarchy">("assets");
   const [assetSearchQuery, setAssetSearchQuery] = useState("");
   const [assetSourceFilter, setAssetSourceFilter] = useState<"all" | "built-in" | "uploaded">("all");
@@ -163,6 +194,188 @@ export function BuilderShellApp({ adapter, hosts }: BuilderShellAppProps) {
     () => snapshot.palette.find((item) => item.assetId === selectedAssetId) ?? null,
     [selectedAssetId, snapshot.palette]
   );
+  const selectedObjectIds = snapshot.selectedObjectIds;
+  const primarySelectedObject = snapshot.primarySelectedObject ?? snapshot.selectedObject;
+  const selectedObjectCount = selectedObjectIds.length;
+  const hasSelection = Boolean(primarySelectedObject);
+  const hasMultipleSelection = selectedObjectCount > 1;
+
+  useEffect(() => {
+    const debugMarquee = (event: string, details: Record<string, unknown>): void => {
+      if (!isBrowserDebugEnabled()) {
+        return;
+      }
+
+      logBrowserDebug(`builder:marquee:${event}`, details);
+    };
+
+    const handlePointerDown = (event: PointerEvent): void => {
+      if (event.button !== 0) {
+        debugMarquee("pointerdown-ignored", {
+          reason: "non-primary-button",
+          button: event.button
+        });
+        return;
+      }
+
+      const target = event.target;
+      if (!(target instanceof HTMLCanvasElement) || target.id !== "renderCanvas") {
+        debugMarquee("pointerdown-ignored", {
+          reason: "non-render-canvas-target",
+          targetTag: target instanceof Element ? target.tagName : typeof target
+        });
+        return;
+      }
+
+      if (cameraNavigationEnabled) {
+        debugMarquee("pointerdown-ignored", {
+          reason: "camera-navigation-enabled"
+        });
+        return;
+      }
+
+      const canStart = adapter.canStartMarqueeSelectionAt(event.clientX, event.clientY);
+      if (!canStart) {
+        debugMarquee("pointerdown-ignored", {
+          reason: "runtime-start-gate-denied",
+          clientX: event.clientX,
+          clientY: event.clientY,
+          defaultPrevented: event.defaultPrevented
+        });
+        return;
+      }
+
+      const mode: MarqueeSelectionMode = event.ctrlKey || event.metaKey
+        ? "toggle"
+        : event.shiftKey
+          ? "add"
+          : "replace";
+
+      marqueeInteractionRef.current = {
+        pointerId: event.pointerId,
+        startX: event.clientX,
+        startY: event.clientY,
+        currentX: event.clientX,
+        currentY: event.clientY,
+        mode,
+        isDragging: false
+      };
+
+      if (target.setPointerCapture) {
+        target.setPointerCapture(event.pointerId);
+      }
+
+      debugMarquee("pointerdown-accepted", {
+        pointerId: event.pointerId,
+        clientX: event.clientX,
+        clientY: event.clientY,
+        defaultPrevented: event.defaultPrevented,
+        mode
+      });
+    };
+
+    const handlePointerMove = (event: PointerEvent): void => {
+      const interaction = marqueeInteractionRef.current;
+      if (!interaction || interaction.pointerId !== event.pointerId) {
+        return;
+      }
+
+      interaction.currentX = event.clientX;
+      interaction.currentY = event.clientY;
+
+      const deltaX = interaction.currentX - interaction.startX;
+      const deltaY = interaction.currentY - interaction.startY;
+      if (!interaction.isDragging) {
+        const distance = Math.hypot(deltaX, deltaY);
+        if (distance < MARQUEE_DRAG_THRESHOLD_PX) {
+          return;
+        }
+
+        interaction.isDragging = true;
+        debugMarquee("drag-started", {
+          pointerId: interaction.pointerId,
+          startX: interaction.startX,
+          startY: interaction.startY,
+          currentX: interaction.currentX,
+          currentY: interaction.currentY,
+          threshold: MARQUEE_DRAG_THRESHOLD_PX
+        });
+      }
+
+      debugMarquee("drag-updated", {
+        pointerId: interaction.pointerId,
+        currentX: interaction.currentX,
+        currentY: interaction.currentY
+      });
+      setMarqueeRect(createMarqueeRect(interaction.startX, interaction.startY, interaction.currentX, interaction.currentY));
+    };
+
+    const handlePointerRelease = (event: PointerEvent): void => {
+      const interaction = marqueeInteractionRef.current;
+      if (!interaction || interaction.pointerId !== event.pointerId) {
+        return;
+      }
+
+      marqueeInteractionRef.current = null;
+
+      if (interaction.isDragging) {
+        const normalizedRect = createMarqueeRect(
+          interaction.startX,
+          interaction.startY,
+          interaction.currentX,
+          interaction.currentY
+        );
+
+        adapter.applyMarqueeSelection(
+          {
+            left: normalizedRect.left,
+            top: normalizedRect.top,
+            right: normalizedRect.left + normalizedRect.width,
+            bottom: normalizedRect.top + normalizedRect.height
+          },
+          interaction.mode
+        );
+
+        debugMarquee("drag-released", {
+          pointerId: interaction.pointerId,
+          mode: interaction.mode,
+          left: normalizedRect.left,
+          top: normalizedRect.top,
+          right: normalizedRect.left + normalizedRect.width,
+          bottom: normalizedRect.top + normalizedRect.height
+        });
+      } else {
+        debugMarquee("pointerup-without-drag", {
+          pointerId: interaction.pointerId,
+          startX: interaction.startX,
+          startY: interaction.startY,
+          endX: interaction.currentX,
+          endY: interaction.currentY
+        });
+      }
+
+      const target = event.target;
+      if (target instanceof HTMLCanvasElement && target.id === "renderCanvas" && target.hasPointerCapture(event.pointerId)) {
+        target.releasePointerCapture(event.pointerId);
+      }
+
+      setMarqueeRect(null);
+    };
+
+    window.addEventListener("pointerdown", handlePointerDown);
+    window.addEventListener("pointermove", handlePointerMove);
+    window.addEventListener("pointerup", handlePointerRelease);
+    window.addEventListener("pointercancel", handlePointerRelease);
+
+    return () => {
+      window.removeEventListener("pointerdown", handlePointerDown);
+      window.removeEventListener("pointermove", handlePointerMove);
+      window.removeEventListener("pointerup", handlePointerRelease);
+      window.removeEventListener("pointercancel", handlePointerRelease);
+      marqueeInteractionRef.current = null;
+      setMarqueeRect(null);
+    };
+  }, [adapter, cameraNavigationEnabled]);
 
   const handleUploadClick = (): void => {
     uploadInputRef.current?.click();
@@ -446,15 +659,21 @@ export function BuilderShellApp({ adapter, hosts }: BuilderShellAppProps) {
               </div>
             ) : (
               snapshot.objects.map((object) => {
-                const isSelected = object.id === snapshot.selectedObjectId;
+                const isSelected = selectedObjectIds.includes(object.id);
+                const isPrimarySelected = object.id === snapshot.primarySelectedObjectId;
                 return (
                   <button
                     key={object.id}
-                    className={`builder-scene-object-item${isSelected ? " is-selected" : ""}`}
+                    className={`builder-scene-object-item${isSelected ? " is-selected" : ""}${isPrimarySelected ? " is-primary" : ""}`}
                     type="button"
                     data-object-id={object.id}
-                    onClick={() => {
-                      store.getState().selectObjectById(object.id);
+                    aria-current={isPrimarySelected ? "true" : undefined}
+                    title={isPrimarySelected ? "Primary selection" : undefined}
+                    onClick={(event) => {
+                      store.getState().selectObjectWithModifiers(object.id, {
+                        additive: event.shiftKey,
+                        toggle: event.ctrlKey || event.metaKey
+                      });
                     }}
                   >
                     {object.assetLabel}
@@ -478,11 +697,18 @@ export function BuilderShellApp({ adapter, hosts }: BuilderShellAppProps) {
       <div className="builder-panel-section builder-panel-section-no-border builder-panel-section-tight builder-inspector-section">
         <span className="builder-panel-label">Object</span>
         <div id="builder-selection-summary" className="builder-selection-summary">
-          {snapshot.selectedObject ? (
+          {hasMultipleSelection && primarySelectedObject ? (
             <div className="builder-selection-card">
-              <p className="builder-selection-title">{snapshot.selectedObject.assetLabel}</p>
-              <p className="builder-selection-meta">{snapshot.selectedObject.id}</p>
-              <p className="builder-selection-meta">{snapshot.selectedObject.assetId}</p>
+              <p className="builder-selection-title">{selectedObjectCount} objects selected</p>
+              <p className="builder-selection-meta">Primary: {primarySelectedObject.assetLabel}</p>
+              <p className="builder-selection-meta">{primarySelectedObject.id}</p>
+              <p className="builder-selection-meta">Transform fields show primary values. Transform edits and nudge/rotate actions apply to all selected objects.</p>
+            </div>
+          ) : primarySelectedObject ? (
+            <div className="builder-selection-card">
+              <p className="builder-selection-title">{primarySelectedObject.assetLabel}</p>
+              <p className="builder-selection-meta">{primarySelectedObject.id}</p>
+              <p className="builder-selection-meta">{primarySelectedObject.assetId}</p>
             </div>
           ) : (
             <div className="builder-editor-hint" role="status">
@@ -502,8 +728,8 @@ export function BuilderShellApp({ adapter, hosts }: BuilderShellAppProps) {
               id="builder-pos-x"
               type="number"
               step="0.1"
-              disabled={!snapshot.selectedObject}
-              value={snapshot.selectedObject ? snapshot.selectedObject.position.x : ""}
+              disabled={!hasSelection}
+              value={primarySelectedObject ? primarySelectedObject.position.x : ""}
               onChange={(event) => {
                 const value = Number(event.target.value);
                 if (Number.isFinite(value)) {
@@ -518,8 +744,8 @@ export function BuilderShellApp({ adapter, hosts }: BuilderShellAppProps) {
               id="builder-pos-y"
               type="number"
               step="0.1"
-              disabled={!snapshot.selectedObject}
-              value={snapshot.selectedObject ? snapshot.selectedObject.position.y : ""}
+              disabled={!hasSelection}
+              value={primarySelectedObject ? primarySelectedObject.position.y : ""}
               onChange={(event) => {
                 const value = Number(event.target.value);
                 if (Number.isFinite(value)) {
@@ -534,8 +760,8 @@ export function BuilderShellApp({ adapter, hosts }: BuilderShellAppProps) {
               id="builder-pos-z"
               type="number"
               step="0.1"
-              disabled={!snapshot.selectedObject}
-              value={snapshot.selectedObject ? snapshot.selectedObject.position.z : ""}
+              disabled={!hasSelection}
+              value={primarySelectedObject ? primarySelectedObject.position.z : ""}
               onChange={(event) => {
                 const value = Number(event.target.value);
                 if (Number.isFinite(value)) {
@@ -550,8 +776,8 @@ export function BuilderShellApp({ adapter, hosts }: BuilderShellAppProps) {
               id="builder-rot-y"
               type="number"
               step="0.1"
-              disabled={!snapshot.selectedObject}
-              value={snapshot.selectedObject ? snapshot.selectedObject.rotationY : ""}
+              disabled={!hasSelection}
+              value={primarySelectedObject ? primarySelectedObject.rotationY : ""}
               onChange={(event) => {
                 const value = Number(event.target.value);
                 if (Number.isFinite(value)) {
@@ -567,8 +793,8 @@ export function BuilderShellApp({ adapter, hosts }: BuilderShellAppProps) {
               type="number"
               min="0.1"
               step="0.1"
-              disabled={!snapshot.selectedObject}
-              value={snapshot.selectedObject ? snapshot.selectedObject.scale : ""}
+              disabled={!hasSelection}
+              value={primarySelectedObject ? primarySelectedObject.scale : ""}
               onChange={(event) => {
                 const value = Number(event.target.value);
                 if (Number.isFinite(value)) {
@@ -584,7 +810,7 @@ export function BuilderShellApp({ adapter, hosts }: BuilderShellAppProps) {
             type="button"
             data-move-axis="x"
             data-move-delta="-0.25"
-            disabled={!snapshot.selectedObject}
+            disabled={!hasSelection}
             onClick={() => {
               store.getState().nudgeSelectedObject("x", -0.25);
             }}
@@ -596,7 +822,7 @@ export function BuilderShellApp({ adapter, hosts }: BuilderShellAppProps) {
             type="button"
             data-move-axis="x"
             data-move-delta="0.25"
-            disabled={!snapshot.selectedObject}
+            disabled={!hasSelection}
             onClick={() => {
               store.getState().nudgeSelectedObject("x", 0.25);
             }}
@@ -609,7 +835,7 @@ export function BuilderShellApp({ adapter, hosts }: BuilderShellAppProps) {
             className="ui-button builder-button"
             type="button"
             data-rotate-delta="-15"
-            disabled={!snapshot.selectedObject}
+            disabled={!hasSelection}
             onClick={() => {
               store.getState().rotateSelectedObject(-15);
             }}
@@ -620,7 +846,7 @@ export function BuilderShellApp({ adapter, hosts }: BuilderShellAppProps) {
             className="ui-button builder-button"
             type="button"
             data-rotate-delta="15"
-            disabled={!snapshot.selectedObject}
+            disabled={!hasSelection}
             onClick={() => {
               store.getState().rotateSelectedObject(15);
             }}
@@ -636,7 +862,7 @@ export function BuilderShellApp({ adapter, hosts }: BuilderShellAppProps) {
             id="builder-duplicate"
             className="ui-button builder-button"
             type="button"
-            disabled={!snapshot.selectedObject}
+            disabled={!hasSelection}
             onClick={() => {
               void store.getState().duplicateSelectedObject();
             }}
@@ -647,7 +873,7 @@ export function BuilderShellApp({ adapter, hosts }: BuilderShellAppProps) {
             id="builder-delete"
             className="ui-button builder-button builder-button-danger"
             type="button"
-            disabled={!snapshot.selectedObject}
+            disabled={!hasSelection}
             onClick={() => {
               store.getState().deleteSelectedObject();
             }}
@@ -672,6 +898,18 @@ export function BuilderShellApp({ adapter, hosts }: BuilderShellAppProps) {
   return (
     <>
       {toolbar}
+      {marqueeRect ? (
+        <div
+          className="builder-marquee-overlay"
+          style={{
+            left: `${marqueeRect.left}px`,
+            top: `${marqueeRect.top}px`,
+            width: `${marqueeRect.width}px`,
+            height: `${marqueeRect.height}px`
+          }}
+          aria-hidden="true"
+        />
+      ) : null}
       {createPortal(leftPanel, hosts.libraryPanel)}
       {createPortal(inspectorPanel, hosts.inspectorPanel)}
       {createPortal(toast, hosts.toastHost)}

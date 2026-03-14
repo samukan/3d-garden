@@ -1197,6 +1197,10 @@
   color: var(--color-text-primary);
 }
 
+#app[data-app-mode="builder"][data-builder-shell="v2"] .builder-scene-object-item.is-primary {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-accent-strong) 42%, transparent);
+}
+
 #app[data-app-mode="builder"][data-builder-shell="v2"] .builder-field-grid {
   gap: 8px;
   margin-top: 8px;
@@ -1218,6 +1222,14 @@
 
 #app[data-app-mode="builder"][data-builder-shell="v2"] .builder-rollout-panel {
   background: color-mix(in srgb, var(--color-surface-overlay) 82%, #111823);
+}
+
+#app[data-app-mode="builder"][data-builder-shell="v2"] .builder-marquee-overlay {
+  position: fixed;
+  pointer-events: none;
+  z-index: var(--z-overlay);
+  border: 1px solid color-mix(in srgb, var(--color-accent-strong) 58%, transparent);
+  background: color-mix(in srgb, var(--color-accent-soft) 18%, transparent);
 }
 
 .builder-toast.is-dismissed {

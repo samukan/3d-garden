@@ -322,4 +322,82 @@ test("v2 shell allows selecting an asset and adding it to scene", async ({ page,
     timeout: 10_000
   });
   await expect(page.locator(".builder-scene-object-item")).toHaveCount(1);
+
+  await firstPaletteButton.click();
+  await expect(page.locator("#builder-place-asset")).toBeVisible();
+  await page.locator("#builder-place-asset").click();
+  await expect(page.locator(".builder-scene-object-item")).toHaveCount(2);
+
+  await page.locator("#builder-tab-scene").click();
+  const sceneObjectRows = page.locator(".builder-scene-object-item");
+  await sceneObjectRows.nth(0).click();
+  await expect(page.locator("#builder-selection-summary")).toContainText("builder-object-1");
+
+  await page.keyboard.down("Shift");
+  await sceneObjectRows.nth(1).click();
+  await page.keyboard.up("Shift");
+
+  await expect(sceneObjectRows.nth(0)).toHaveClass(/is-selected/);
+  await expect(sceneObjectRows.nth(1)).toHaveClass(/is-selected/);
+  await expect(page.locator("#builder-selection-summary")).toContainText("2 objects selected");
+
+  await page.keyboard.down("Control");
+  await sceneObjectRows.nth(0).click();
+  await page.keyboard.up("Control");
+
+  await expect(sceneObjectRows.nth(0)).not.toHaveClass(/is-selected/);
+  await expect(sceneObjectRows.nth(1)).toHaveClass(/is-selected/);
+  await expect(page.locator("#builder-selection-summary")).toContainText("builder-object-2");
+});
+
+test("v2 shell starts marquee drag and renders overlay", async ({ page, baseURL }) => {
+  const marqueeLogs: string[] = [];
+  page.on("console", (message) => {
+    const text = message.text();
+    if (text.includes("builder:marquee:")) {
+      marqueeLogs.push(text);
+    }
+  });
+
+  await page.goto(`${baseURL}/?renderer=webgl&appMode=builder&builderShell=v2&debugBrowserLogs=1`, {
+    waitUntil: "domcontentloaded"
+  });
+
+  await expect(page.locator("#builder-workspace")).toBeVisible();
+  await expect(page.locator("#builder-status")).toContainText("Builder ready", {
+    timeout: 20_000
+  });
+
+  const firstPaletteButton = page.locator("#builder-palette button").first();
+  await firstPaletteButton.click();
+  await page.locator("#builder-place-asset").click();
+  await firstPaletteButton.click();
+  await page.locator("#builder-place-asset").click();
+  await expect(page.locator(".builder-scene-object-item")).toHaveCount(2);
+
+  const canvas = page.locator("#renderCanvas");
+  const canvasBounds = await canvas.boundingBox();
+  expect(canvasBounds).not.toBeNull();
+  if (!canvasBounds) {
+    throw new Error("Render canvas bounds were unavailable for marquee startup test.");
+  }
+
+  const startX = canvasBounds.x + canvasBounds.width * 0.28;
+  const startY = canvasBounds.y + canvasBounds.height * 0.58;
+  const endX = startX + 140;
+  const endY = startY + 96;
+
+  await page.mouse.move(startX, startY);
+  await page.mouse.down();
+  await page.mouse.move(endX, endY);
+
+  await expect(page.locator(".builder-marquee-overlay")).toBeVisible();
+
+  await page.mouse.up();
+  await expect(page.locator(".builder-marquee-overlay")).toHaveCount(0);
+
+  expect(marqueeLogs.some((entry) => entry.includes("builder:marquee:start-check"))).toBe(true);
+  expect(marqueeLogs.some((entry) => entry.includes("builder:marquee:pointerdown-accepted"))).toBe(true);
+  expect(marqueeLogs.some((entry) => entry.includes("builder:marquee:drag-started"))).toBe(true);
+  expect(marqueeLogs.some((entry) => entry.includes("builder:marquee:apply"))).toBe(true);
 });

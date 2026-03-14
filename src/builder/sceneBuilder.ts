@@ -7,12 +7,12 @@ import { DirectionalLight } from "@babylonjs/core/Lights/directionalLight";
 import { HemisphericLight } from "@babylonjs/core/Lights/hemisphericLight";
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import { Color3, Color4 } from "@babylonjs/core/Maths/math.color";
-import { Vector3 } from "@babylonjs/core/Maths/math.vector";
+import { Matrix, Vector3 } from "@babylonjs/core/Maths/math.vector";
 import type { AbstractMesh } from "@babylonjs/core/Meshes/abstractMesh";
 import type { LinesMesh } from "@babylonjs/core/Meshes/linesMesh";
 import { Mesh } from "@babylonjs/core/Meshes/mesh";
 import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder";
-import type { TransformNode } from "@babylonjs/core/Meshes/transformNode";
+import { TransformNode } from "@babylonjs/core/Meshes/transformNode";
 import { Scene } from "@babylonjs/core/scene";
 
 import { createCameraRoutePlayer } from "../camera-routes/cameraRoutePlayer";
@@ -81,6 +81,14 @@ export interface UploadedAssetBatchUploadResult {
 }
 
 export type BuilderTransformMode = "move" | "rotate" | "scale";
+export type BuilderSelectionMergeMode = "replace" | "add" | "toggle";
+
+export interface BuilderScreenRect {
+  left: number;
+  top: number;
+  right: number;
+  bottom: number;
+}
 
 export interface SceneBuilderController {
   scene: Scene;
@@ -115,6 +123,13 @@ export interface SceneBuilderController {
   isCameraNavigationEnabled: () => boolean;
   getTransformMode: () => BuilderTransformMode;
   placeAsset: (assetId: AssetId) => Promise<void>;
+  canStartMarqueeSelectionAt: (clientX: number, clientY: number) => boolean;
+  applyMarqueeSelection: (rect: BuilderScreenRect, mode: BuilderSelectionMergeMode) => void;
+  replaceSelection: (objectIds: string[], primaryObjectId?: string | null) => void;
+  addToSelection: (objectId: string) => void;
+  toggleSelection: (objectId: string) => void;
+  removeFromSelection: (objectId: string) => void;
+  clearSelection: () => void;
   redo: () => Promise<boolean>;
   selectObjectById: (objectId: string | null) => void;
   setCameraNavigationEnabled: (enabled: boolean) => void;
@@ -150,13 +165,24 @@ interface BuilderHistorySnapshot {
   layoutRecords: BuilderLayoutRecord[];
   layoutMetadata: BuilderWorldMetadata | undefined;
   nextObjectNumber: number;
-  selectedObjectId: string | null;
+  selectedObjectIds: string[];
+  primarySelectedObjectId: string | null;
+  selectedObjectId?: string | null;
 }
 
 interface BuilderGizmoInteractionState {
   beforeSnapshot: BuilderHistorySnapshot;
   cameraNavigationEnabledBefore: boolean;
   objectId: string;
+  objectIds: string[];
+  interactionKind: "single" | "group-move" | "group-rotate" | "group-scale";
+  groupMovePivotNode: TransformNode | null;
+  groupMoveStartPivotPosition: Vector3 | null;
+  groupStartPivotRotationY: number | null;
+  groupStartPivotScale: number | null;
+  groupMoveStartRootPositions: Map<string, Vector3>;
+  groupStartRootRotationY: Map<string, number>;
+  groupStartRootScale: Map<string, number>;
 }
 
 interface RouteOverlayMaterials {
@@ -201,6 +227,7 @@ export async function createSceneBuilder({
   let routeOverlayPointMeshes: Mesh[] = [];
   let routeOverlayLine: LinesMesh | null = null;
   let routeOverlayLookAtLine: LinesMesh | null = null;
+  let multiSelectionTransformPivotNode: TransformNode | null = null;
 
   scene.clearColor = new Color4(0.79, 0.87, 0.92, 1);
   scene.ambientColor = new Color3(0.2, 0.24, 0.22);
@@ -604,8 +631,108 @@ export async function createSceneBuilder({
     layoutRecords: state.layoutRecords.map(cloneLayoutRecord),
     layoutMetadata: cloneBuilderWorldMetadata(state.layoutMetadata),
     nextObjectNumber,
-    selectedObjectId: state.selectedObjectId
+    selectedObjectIds: [...state.selectedObjectIds],
+    primarySelectedObjectId: state.primarySelectedObjectId
   });
+
+  const getPrimarySelectedObjectId = (): string | null => state.primarySelectedObjectId;
+
+  const deriveCompatibilitySelectedObjectId = (): string | null => state.primarySelectedObjectId;
+
+  const normalizeSelectionIds = (ids: string[]): string[] => {
+    const uniqueIds: string[] = [];
+    const seenIds = new Set<string>();
+    for (const id of ids) {
+      if (!placedObjects.has(id) || seenIds.has(id)) {
+        continue;
+      }
+
+      seenIds.add(id);
+      uniqueIds.push(id);
+    }
+
+    return uniqueIds;
+  };
+
+  const resolvePrimarySelectionId = (orderedIds: string[], preferredPrimaryId?: string | null): string | null => {
+    if (orderedIds.length === 0) {
+      return null;
+    }
+
+    if (preferredPrimaryId && orderedIds.includes(preferredPrimaryId)) {
+      return preferredPrimaryId;
+    }
+
+    return orderedIds[orderedIds.length - 1] ?? null;
+  };
+
+  const applySelectionState = (
+    orderedIds: string[],
+    preferredPrimaryId?: string | null,
+    options?: { notify?: boolean }
+  ): void => {
+    const normalizedIds = normalizeSelectionIds(orderedIds);
+    const nextPrimaryId = resolvePrimarySelectionId(normalizedIds, preferredPrimaryId);
+
+    state.selectedObjectIds = normalizedIds;
+    state.primarySelectedObjectId = nextPrimaryId;
+    state.selectedObjectId = deriveCompatibilitySelectedObjectId();
+
+    const selectedMeshes = normalizedIds.flatMap((id) => placedObjects.get(id)?.meshes ?? []);
+    selectionController.setSelection(selectedMeshes);
+    setGizmoAttachmentForSelection();
+
+    if (options?.notify !== false) {
+      notify();
+    }
+  };
+
+  const replaceSelection = (objectIds: string[], primaryObjectId?: string | null): void => {
+    applySelectionState(objectIds, primaryObjectId);
+  };
+
+  const addToSelection = (objectId: string): void => {
+    if (!placedObjects.has(objectId)) {
+      return;
+    }
+
+    if (state.selectedObjectIds.includes(objectId)) {
+      applySelectionState(state.selectedObjectIds, objectId);
+      return;
+    }
+
+    applySelectionState([...state.selectedObjectIds, objectId], objectId);
+  };
+
+  const removeFromSelection = (objectId: string): void => {
+    if (!state.selectedObjectIds.includes(objectId)) {
+      return;
+    }
+
+    const nextSelectionIds = state.selectedObjectIds.filter((id) => id !== objectId);
+    const nextPrimaryId =
+      state.primarySelectedObjectId === objectId
+        ? nextSelectionIds[nextSelectionIds.length - 1] ?? null
+        : state.primarySelectedObjectId;
+    applySelectionState(nextSelectionIds, nextPrimaryId);
+  };
+
+  const toggleSelection = (objectId: string): void => {
+    if (!placedObjects.has(objectId)) {
+      return;
+    }
+
+    if (state.selectedObjectIds.includes(objectId)) {
+      removeFromSelection(objectId);
+      return;
+    }
+
+    addToSelection(objectId);
+  };
+
+  const clearSelection = (): void => {
+    applySelectionState([], null);
+  };
 
   const clearHistory = (): void => {
     undoStack = [];
@@ -621,12 +748,82 @@ export async function createSceneBuilder({
   };
 
   const setGizmoAttachmentForSelection = (): void => {
-    if (!state.selectedObjectId) {
+    const disposeMultiSelectionTransformPivotNode = (): void => {
+      if (!multiSelectionTransformPivotNode) {
+        return;
+      }
+
+      if (gizmoManager.attachedNode === multiSelectionTransformPivotNode) {
+        gizmoManager.attachToNode(null);
+      }
+
+      multiSelectionTransformPivotNode.dispose(false, true);
+      multiSelectionTransformPivotNode = null;
+    };
+
+    const getSelectedEntriesInOrder = (): PlacedObjectEntry[] => state.selectedObjectIds
+      .map((id) => placedObjects.get(id))
+      .filter((entry): entry is PlacedObjectEntry => Boolean(entry));
+
+    const getSelectionCentroid = (entries: PlacedObjectEntry[]): Vector3 | null => {
+      if (entries.length === 0) {
+        return null;
+      }
+
+      const accumulated = new Vector3(0, 0, 0);
+      for (const entry of entries) {
+        accumulated.addInPlace(entry.root.position);
+      }
+
+      return accumulated.scale(1 / entries.length);
+    };
+
+    const ensureMultiSelectionTransformPivotNode = (): TransformNode | null => {
+      if (transformMode !== "move" && transformMode !== "rotate" && transformMode !== "scale") {
+        disposeMultiSelectionTransformPivotNode();
+        return null;
+      }
+
+      const selectedEntries = getSelectedEntriesInOrder();
+      if (selectedEntries.length < 2) {
+        disposeMultiSelectionTransformPivotNode();
+        return null;
+      }
+
+      const centroid = getSelectionCentroid(selectedEntries);
+      if (!centroid) {
+        disposeMultiSelectionTransformPivotNode();
+        return null;
+      }
+
+      if (!multiSelectionTransformPivotNode || multiSelectionTransformPivotNode.isDisposed()) {
+        multiSelectionTransformPivotNode = new TransformNode("builder-multi-selection-transform-pivot", scene);
+      }
+
+      multiSelectionTransformPivotNode.position.copyFrom(centroid);
+      multiSelectionTransformPivotNode.rotation.set(0, 0, 0);
+      multiSelectionTransformPivotNode.scaling.set(1, 1, 1);
+      return multiSelectionTransformPivotNode;
+    };
+
+    const selectedObjectIds = state.selectedObjectIds;
+    if (selectedObjectIds.length > 1) {
+      const multiSelectionPivotNode = ensureMultiSelectionTransformPivotNode();
+      if (multiSelectionPivotNode) {
+        gizmoManager.attachToNode(multiSelectionPivotNode);
+        return;
+      }
+    }
+
+    disposeMultiSelectionTransformPivotNode();
+
+    const selectedObjectId = getPrimarySelectedObjectId();
+    if (!selectedObjectId) {
       gizmoManager.attachToNode(null);
       return;
     }
 
-    const selectedEntry = placedObjects.get(state.selectedObjectId);
+    const selectedEntry = placedObjects.get(selectedObjectId);
     gizmoManager.attachToNode(selectedEntry?.root ?? null);
   };
 
@@ -678,23 +875,151 @@ export async function createSceneBuilder({
   };
 
   const beginGizmoInteraction = (): void => {
-    if (historyRestoreInFlight || gizmoInteractionState || !state.selectedObjectId) {
+    const selectedObjectId = getPrimarySelectedObjectId();
+    if (historyRestoreInFlight || gizmoInteractionState || !selectedObjectId) {
       return;
     }
+
+    const selectedObjectIds = normalizeSelectionIds(state.selectedObjectIds);
+    const canUseGroupTransformInteraction =
+      (transformMode === "move" || transformMode === "rotate" || transformMode === "scale") &&
+      selectedObjectIds.length > 1;
+    const selectedEntries = selectedObjectIds
+      .map((id) => placedObjects.get(id))
+      .filter((entry): entry is PlacedObjectEntry => Boolean(entry));
+
+    const groupMovePivotNode = canUseGroupTransformInteraction && gizmoManager.attachedNode instanceof TransformNode
+      ? gizmoManager.attachedNode
+      : null;
+
+    const groupMoveStartRootPositions = new Map<string, Vector3>();
+    const groupStartRootRotationY = new Map<string, number>();
+    const groupStartRootScale = new Map<string, number>();
+    if (canUseGroupTransformInteraction) {
+      for (const entry of selectedEntries) {
+        groupMoveStartRootPositions.set(entry.layout.id, entry.root.position.clone());
+        groupStartRootRotationY.set(entry.layout.id, entry.root.rotation.y);
+        groupStartRootScale.set(entry.layout.id, entry.root.scaling.x);
+      }
+    }
+
+    const interactionKind: BuilderGizmoInteractionState["interactionKind"] =
+      canUseGroupTransformInteraction && groupMovePivotNode
+        ? transformMode === "rotate"
+          ? "group-rotate"
+          : transformMode === "scale"
+            ? "group-scale"
+            : "group-move"
+        : "single";
 
     gizmoInteractionState = {
       beforeSnapshot: captureHistorySnapshot(),
       cameraNavigationEnabledBefore: developmentCamera.isNavigationEnabled(),
-      objectId: state.selectedObjectId
+      objectId: selectedObjectId,
+      objectIds: canUseGroupTransformInteraction ? selectedEntries.map((entry) => entry.layout.id) : [selectedObjectId],
+      interactionKind,
+      groupMovePivotNode,
+      groupMoveStartPivotPosition: canUseGroupTransformInteraction && groupMovePivotNode
+        ? groupMovePivotNode.position.clone()
+        : null,
+      groupStartPivotRotationY: canUseGroupTransformInteraction && groupMovePivotNode
+        ? groupMovePivotNode.rotation.y
+        : null,
+      groupStartPivotScale: canUseGroupTransformInteraction && groupMovePivotNode
+        ? groupMovePivotNode.scaling.x
+        : null,
+      groupMoveStartRootPositions,
+      groupStartRootRotationY,
+      groupStartRootScale
     };
 
     if (developmentCamera.isNavigationEnabled()) {
       developmentCamera.setNavigationEnabled(false);
     }
 
-    state.statusMessage = "Transforming selected object...";
+    state.statusMessage = gizmoInteractionState.interactionKind === "group-move"
+      ? `Transforming ${gizmoInteractionState.objectIds.length} selected objects...`
+      : gizmoInteractionState.interactionKind === "group-rotate"
+        ? `Rotating ${gizmoInteractionState.objectIds.length} selected objects...`
+        : gizmoInteractionState.interactionKind === "group-scale"
+          ? `Scaling ${gizmoInteractionState.objectIds.length} selected objects...`
+        : "Transforming selected object...";
     suppressNextPick = true;
     notify();
+  };
+
+  const applyGroupMoveDuringInteraction = (interactionState: BuilderGizmoInteractionState): void => {
+    if (
+      interactionState.interactionKind !== "group-move" ||
+      !interactionState.groupMovePivotNode ||
+      !interactionState.groupMoveStartPivotPosition
+    ) {
+      return;
+    }
+
+    const delta = interactionState.groupMovePivotNode.position.subtract(interactionState.groupMoveStartPivotPosition);
+    for (const objectId of interactionState.objectIds) {
+      const entry = placedObjects.get(objectId);
+      const startRootPosition = interactionState.groupMoveStartRootPositions.get(objectId);
+      if (!entry || !startRootPosition) {
+        continue;
+      }
+
+      entry.root.position.set(
+        startRootPosition.x + delta.x,
+        startRootPosition.y + delta.y,
+        startRootPosition.z + delta.z
+      );
+    }
+  };
+
+  const applyGroupRotateDuringInteraction = (interactionState: BuilderGizmoInteractionState): void => {
+    if (
+      interactionState.interactionKind !== "group-rotate" ||
+      !interactionState.groupMovePivotNode ||
+      interactionState.groupStartPivotRotationY === null
+    ) {
+      return;
+    }
+
+    const pivotNode = interactionState.groupMovePivotNode;
+    const rotationDeltaY = pivotNode.rotation.y - interactionState.groupStartPivotRotationY;
+
+    for (const objectId of interactionState.objectIds) {
+      const entry = placedObjects.get(objectId);
+      const startRootRotationY = interactionState.groupStartRootRotationY.get(objectId);
+      if (!entry || startRootRotationY === undefined) {
+        continue;
+      }
+
+      entry.root.rotation.y = startRootRotationY + rotationDeltaY;
+    }
+  };
+
+  const applyGroupScaleDuringInteraction = (interactionState: BuilderGizmoInteractionState): void => {
+    if (
+      interactionState.interactionKind !== "group-scale" ||
+      !interactionState.groupMovePivotNode ||
+      interactionState.groupStartPivotScale === null ||
+      interactionState.groupStartPivotScale <= 0
+    ) {
+      return;
+    }
+
+    const pivotNode = interactionState.groupMovePivotNode;
+    const rawScaleRatio = pivotNode.scaling.x / interactionState.groupStartPivotScale;
+    const safeScaleRatio = Number.isFinite(rawScaleRatio) && rawScaleRatio > 0.0001 ? rawScaleRatio : 0.0001;
+
+    for (const objectId of interactionState.objectIds) {
+      const entry = placedObjects.get(objectId);
+      const startRootScale = interactionState.groupStartRootScale.get(objectId);
+      if (!entry || startRootScale === undefined) {
+        continue;
+      }
+
+      const nextUniformScale = Math.max(0.0001, startRootScale * safeScaleRatio);
+      entry.root.scaling.set(nextUniformScale, nextUniformScale, nextUniformScale);
+    }
   };
 
   const completeGizmoInteraction = (): void => {
@@ -705,18 +1030,76 @@ export async function createSceneBuilder({
     const interactionState = gizmoInteractionState;
     gizmoInteractionState = null;
 
-    const didChange = updateLayoutFromRootNode(interactionState.objectId, { silentStatus: true });
-    if (didChange) {
-      pushUndoSnapshot(interactionState.beforeSnapshot);
-      const entry = placedObjects.get(interactionState.objectId);
-      if (entry) {
-        state.statusMessage = `Transformed ${getAssetLabel(assetDefinitions, entry.layout.assetId)}.`;
+    let didChange = false;
+    if (interactionState.interactionKind === "group-move") {
+      applyGroupMoveDuringInteraction(interactionState);
+      for (const objectId of interactionState.objectIds) {
+        const entry = placedObjects.get(objectId);
+        if (!entry) {
+          continue;
+        }
+
+        const didUpdate = updateObjectTransform(
+          objectId,
+          {
+            position: {
+              x: Number(entry.root.position.x.toFixed(3)),
+              y: Number(entry.root.position.y.toFixed(3)),
+              z: Number(entry.root.position.z.toFixed(3))
+            }
+          },
+          { silentStatus: true }
+        );
+        didChange = didUpdate || didChange;
+      }
+
+      if (didChange) {
+        pushUndoSnapshot(interactionState.beforeSnapshot);
+        state.statusMessage = `Moved ${interactionState.objectIds.length} selected objects.`;
+      } else {
+        state.statusMessage = "Transform unchanged.";
+      }
+    } else if (interactionState.interactionKind === "group-rotate") {
+      applyGroupRotateDuringInteraction(interactionState);
+      for (const objectId of interactionState.objectIds) {
+        const didUpdate = updateLayoutFromRootNode(objectId, { silentStatus: true });
+        didChange = didUpdate || didChange;
+      }
+
+      if (didChange) {
+        pushUndoSnapshot(interactionState.beforeSnapshot);
+        state.statusMessage = `Rotated ${interactionState.objectIds.length} selected objects.`;
+      } else {
+        state.statusMessage = "Transform unchanged.";
+      }
+    } else if (interactionState.interactionKind === "group-scale") {
+      applyGroupScaleDuringInteraction(interactionState);
+      for (const objectId of interactionState.objectIds) {
+        const didUpdate = updateLayoutFromRootNode(objectId, { silentStatus: true });
+        didChange = didUpdate || didChange;
+      }
+
+      if (didChange) {
+        pushUndoSnapshot(interactionState.beforeSnapshot);
+        state.statusMessage = `Scaled ${interactionState.objectIds.length} selected objects.`;
+      } else {
+        state.statusMessage = "Transform unchanged.";
       }
     } else {
-      state.statusMessage = "Transform unchanged.";
+      didChange = updateLayoutFromRootNode(interactionState.objectId, { silentStatus: true });
+      if (didChange) {
+        pushUndoSnapshot(interactionState.beforeSnapshot);
+        const entry = placedObjects.get(interactionState.objectId);
+        if (entry) {
+          state.statusMessage = `Transformed ${getAssetLabel(assetDefinitions, entry.layout.assetId)}.`;
+        }
+      } else {
+        state.statusMessage = "Transform unchanged.";
+      }
     }
 
     restoreCameraNavigationState(interactionState.cameraNavigationEnabledBefore);
+    setGizmoAttachmentForSelection();
     notify();
   };
 
@@ -728,14 +1111,16 @@ export async function createSceneBuilder({
     const cameraNavigationEnabledBefore = gizmoInteractionState.cameraNavigationEnabledBefore;
     gizmoInteractionState = null;
     restoreCameraNavigationState(cameraNavigationEnabledBefore);
+    setGizmoAttachmentForSelection();
   };
 
   const getSelectedObjectSnapshot = (): BuilderSelectedObjectSnapshot | null => {
-    if (!state.selectedObjectId) {
+    const selectedObjectId = getPrimarySelectedObjectId();
+    if (!selectedObjectId) {
       return null;
     }
 
-    const entry = placedObjects.get(state.selectedObjectId);
+    const entry = placedObjects.get(selectedObjectId);
     if (!entry) {
       return null;
     }
@@ -746,17 +1131,24 @@ export async function createSceneBuilder({
     };
   };
 
-  const getSnapshot = (): BuilderSceneSnapshot => ({
-    isReady: state.isReady,
-    palette,
-    objects: state.layoutRecords.map((record) => ({
-      ...cloneLayoutRecord(record),
-      assetLabel: getAssetLabel(assetDefinitions, record.assetId)
-    })),
-    selectedObjectId: state.selectedObjectId,
-    selectedObject: getSelectedObjectSnapshot(),
-    statusMessage: state.statusMessage
-  });
+  const getSnapshot = (): BuilderSceneSnapshot => {
+    const primarySelectedObject = getSelectedObjectSnapshot();
+
+    return {
+      isReady: state.isReady,
+      palette,
+      objects: state.layoutRecords.map((record) => ({
+        ...cloneLayoutRecord(record),
+        assetLabel: getAssetLabel(assetDefinitions, record.assetId)
+      })),
+      selectedObjectIds: [...state.selectedObjectIds],
+      primarySelectedObjectId: state.primarySelectedObjectId,
+      primarySelectedObject,
+      selectedObjectId: deriveCompatibilitySelectedObjectId(),
+      selectedObject: primarySelectedObject,
+      statusMessage: state.statusMessage
+    };
+  };
 
   const setCameraNavigationEnabled = (enabled: boolean): void => {
     if (routePreviewPlaying && enabled) {
@@ -808,19 +1200,12 @@ export async function createSceneBuilder({
   };
 
   const setSelection = (objectId: string | null): void => {
-    state.selectedObjectId = objectId;
-
-    if (!objectId) {
-      selectionController.setSelection([]);
-      setGizmoAttachmentForSelection();
-      notify();
+    if (objectId === null) {
+      clearSelection();
       return;
     }
 
-    const entry = placedObjects.get(objectId);
-    selectionController.setSelection(entry?.meshes ?? []);
-    setGizmoAttachmentForSelection();
-    notify();
+    replaceSelection([objectId], objectId);
   };
 
   const selectObjectById = (objectId: string | null): void => {
@@ -838,6 +1223,7 @@ export async function createSceneBuilder({
 
     transformMode = mode;
     applyTransformMode();
+    setGizmoAttachmentForSelection();
     state.statusMessage =
       mode === "move"
         ? "Move gizmo enabled."
@@ -881,6 +1267,26 @@ export async function createSceneBuilder({
   });
   scaleGizmo?.onDragEndObservable.add(() => {
     completeGizmoInteraction();
+  });
+
+  scene.onBeforeRenderObservable.add(() => {
+    if (!gizmoInteractionState) {
+      return;
+    }
+
+    if (gizmoInteractionState.interactionKind === "group-move") {
+      applyGroupMoveDuringInteraction(gizmoInteractionState);
+      return;
+    }
+
+    if (gizmoInteractionState.interactionKind === "group-rotate") {
+      applyGroupRotateDuringInteraction(gizmoInteractionState);
+      return;
+    }
+
+    if (gizmoInteractionState.interactionKind === "group-scale") {
+      applyGroupScaleDuringInteraction(gizmoInteractionState);
+    }
   });
 
   applyTransformMode();
@@ -965,9 +1371,15 @@ export async function createSceneBuilder({
 
     placedObjects.clear();
     nodeObjectMap.clear();
+    if (multiSelectionTransformPivotNode) {
+      multiSelectionTransformPivotNode.dispose(false, true);
+      multiSelectionTransformPivotNode = null;
+    }
     state.layoutRecords = [];
-    selectionController.setSelection([]);
+    state.selectedObjectIds = [];
+    state.primarySelectedObjectId = null;
     state.selectedObjectId = null;
+    selectionController.setSelection([]);
     gizmoManager.attachToNode(null);
     cancelGizmoInteraction();
     suppressNextPick = false;
@@ -994,16 +1406,23 @@ export async function createSceneBuilder({
     }
 
     nextObjectNumber = snapshot.nextObjectNumber;
-    const desiredSelectionId = snapshot.selectedObjectId;
-    const fallbackSelectionId = desiredSelectionId && placedObjects.has(desiredSelectionId)
-      ? desiredSelectionId
-      : firstObjectId;
+    const rawSelectionIds = snapshot.selectedObjectIds.length > 0
+      ? snapshot.selectedObjectIds
+      : (snapshot.selectedObjectId ? [snapshot.selectedObjectId] : []);
+    const snapshotSelectionIds = normalizeSelectionIds(rawSelectionIds);
+    const fallbackSelectionIds = snapshotSelectionIds.length > 0
+      ? snapshotSelectionIds
+      : (firstObjectId ? [firstObjectId] : []);
+    const fallbackPrimarySelectionId = resolvePrimarySelectionId(
+      fallbackSelectionIds,
+      snapshot.primarySelectedObjectId
+    );
     const statusSuffix = skippedCount > 0
       ? ` ${skippedCount} object${skippedCount === 1 ? "" : "s"} could not be restored.`
       : "";
     state.statusMessage = `${options?.statusMessage ?? "History restored."}${statusSuffix}`;
     updateRouteOverlay();
-    setSelection(fallbackSelectionId);
+    applySelectionState(fallbackSelectionIds, fallbackPrimarySelectionId);
     return true;
   };
 
@@ -1075,6 +1494,314 @@ export async function createSceneBuilder({
     }
 
     return null;
+  };
+
+  const normalizeScreenRect = (rect: BuilderScreenRect): BuilderScreenRect => ({
+    left: Math.min(rect.left, rect.right),
+    top: Math.min(rect.top, rect.bottom),
+    right: Math.max(rect.left, rect.right),
+    bottom: Math.max(rect.top, rect.bottom)
+  });
+
+  const intersectsScreenRect = (
+    left: number,
+    top: number,
+    right: number,
+    bottom: number,
+    rect: BuilderScreenRect
+  ): boolean => (
+    right >= rect.left &&
+    left <= rect.right &&
+    bottom >= rect.top &&
+    top <= rect.bottom
+  );
+
+  const toRenderCoordinates = (clientX: number, clientY: number): { x: number; y: number } | null => {
+    const canvasRect = canvas.getBoundingClientRect();
+    if (
+      clientX < canvasRect.left ||
+      clientX > canvasRect.right ||
+      clientY < canvasRect.top ||
+      clientY > canvasRect.bottom
+    ) {
+      return null;
+    }
+
+    const width = canvasRect.width;
+    const height = canvasRect.height;
+    if (width <= 0 || height <= 0) {
+      return null;
+    }
+
+    const normalizedX = (clientX - canvasRect.left) / width;
+    const normalizedY = (clientY - canvasRect.top) / height;
+
+    return {
+      x: normalizedX * engine.getRenderWidth(),
+      y: normalizedY * engine.getRenderHeight()
+    };
+  };
+
+  const resolveObjectIdAtClientPoint = (clientX: number, clientY: number): string | null => {
+    const renderPoint = toRenderCoordinates(clientX, clientY);
+    if (!renderPoint) {
+      return null;
+    }
+
+    const pickInfo = scene.pick(renderPoint.x, renderPoint.y);
+    if (!pickInfo?.hit) {
+      return null;
+    }
+
+    return resolveObjectIdForMesh(pickInfo.pickedMesh ?? null);
+  };
+
+  const getMarqueeStartBlockReason = (clientX: number, clientY: number): string | null => {
+    if (historyRestoreInFlight) {
+      return "history-restore-in-flight";
+    }
+
+    if (routeModeEnabled) {
+      return "route-mode-enabled";
+    }
+
+    if (gizmoManager.isDragging) {
+      return "gizmo-dragging";
+    }
+
+    if (gizmoManager.isHovered) {
+      return "gizmo-hovered";
+    }
+
+    const renderPoint = toRenderCoordinates(clientX, clientY);
+    if (!renderPoint) {
+      return "outside-canvas-or-invalid-canvas-size";
+    }
+
+    const resolvedObjectId = resolveObjectIdAtClientPoint(clientX, clientY);
+    if (resolvedObjectId !== null) {
+      return "object-hit";
+    }
+
+    return null;
+  };
+
+  const canStartMarqueeSelectionAt = (clientX: number, clientY: number): boolean => {
+    const blockReason = getMarqueeStartBlockReason(clientX, clientY);
+    const canStart = blockReason === null;
+
+    if (isBrowserDebugEnabled()) {
+      logBrowserDebug("builder:marquee:start-check", {
+        canStart,
+        blockReason: blockReason ?? "none",
+        clientX,
+        clientY,
+        gizmoDragging: gizmoManager.isDragging,
+        gizmoHovered: gizmoManager.isHovered,
+        routeModeEnabled,
+        historyRestoreInFlight,
+        cameraNavigationEnabled: developmentCamera.isNavigationEnabled()
+      });
+    }
+
+    return canStart;
+  };
+
+  const getEntryWorldBounds = (entry: PlacedObjectEntry): { minimum: Vector3; maximum: Vector3 } | null => {
+    let minimum: Vector3 | null = null;
+    let maximum: Vector3 | null = null;
+
+    for (const mesh of entry.meshes) {
+      if (mesh.isDisposed()) {
+        continue;
+      }
+
+      const boundingBox = mesh.getBoundingInfo().boundingBox;
+      const meshMinimum = boundingBox.minimumWorld;
+      const meshMaximum = boundingBox.maximumWorld;
+
+      minimum = minimum
+        ? new Vector3(
+            Math.min(minimum.x, meshMinimum.x),
+            Math.min(minimum.y, meshMinimum.y),
+            Math.min(minimum.z, meshMinimum.z)
+          )
+        : meshMinimum.clone();
+      maximum = maximum
+        ? new Vector3(
+            Math.max(maximum.x, meshMaximum.x),
+            Math.max(maximum.y, meshMaximum.y),
+            Math.max(maximum.z, meshMaximum.z)
+          )
+        : meshMaximum.clone();
+    }
+
+    if (!minimum || !maximum) {
+      return null;
+    }
+
+    return { minimum, maximum };
+  };
+
+  const getScreenBoundsForEntry = (
+    entry: PlacedObjectEntry,
+    canvasRect: DOMRect,
+    renderWidth: number,
+    renderHeight: number
+  ): { left: number; top: number; right: number; bottom: number } | null => {
+    const activeCamera = scene.activeCamera;
+    if (!activeCamera) {
+      return null;
+    }
+
+    const bounds = getEntryWorldBounds(entry);
+    if (!bounds) {
+      return null;
+    }
+
+    const { minimum, maximum } = bounds;
+    const corners = [
+      new Vector3(minimum.x, minimum.y, minimum.z),
+      new Vector3(minimum.x, minimum.y, maximum.z),
+      new Vector3(minimum.x, maximum.y, minimum.z),
+      new Vector3(minimum.x, maximum.y, maximum.z),
+      new Vector3(maximum.x, minimum.y, minimum.z),
+      new Vector3(maximum.x, minimum.y, maximum.z),
+      new Vector3(maximum.x, maximum.y, minimum.z),
+      new Vector3(maximum.x, maximum.y, maximum.z)
+    ];
+
+    const viewport = activeCamera.viewport.toGlobal(renderWidth, renderHeight);
+    const scaleX = canvasRect.width / renderWidth;
+    const scaleY = canvasRect.height / renderHeight;
+
+    let minX = Number.POSITIVE_INFINITY;
+    let minY = Number.POSITIVE_INFINITY;
+    let maxX = Number.NEGATIVE_INFINITY;
+    let maxY = Number.NEGATIVE_INFINITY;
+    let hasProjectedPoint = false;
+
+    for (const corner of corners) {
+      const projected = Vector3.Project(corner, Matrix.Identity(), scene.getTransformMatrix(), viewport);
+      const clientX = canvasRect.left + projected.x * scaleX;
+      const clientY = canvasRect.top + projected.y * scaleY;
+
+      if (!Number.isFinite(clientX) || !Number.isFinite(clientY)) {
+        continue;
+      }
+
+      minX = Math.min(minX, clientX);
+      minY = Math.min(minY, clientY);
+      maxX = Math.max(maxX, clientX);
+      maxY = Math.max(maxY, clientY);
+      hasProjectedPoint = true;
+    }
+
+    if (!hasProjectedPoint) {
+      return null;
+    }
+
+    return {
+      left: minX,
+      top: minY,
+      right: maxX,
+      bottom: maxY
+    };
+  };
+
+  const applyMarqueeSelection = (rect: BuilderScreenRect, mode: BuilderSelectionMergeMode): void => {
+    if (historyRestoreInFlight || routeModeEnabled) {
+      if (isBrowserDebugEnabled()) {
+        logBrowserDebug("builder:marquee:apply-skipped", {
+          reason: historyRestoreInFlight ? "history-restore-in-flight" : "route-mode-enabled",
+          mode
+        });
+      }
+      return;
+    }
+
+    const normalizedRect = normalizeScreenRect(rect);
+    const canvasRect = canvas.getBoundingClientRect();
+    if (canvasRect.width <= 0 || canvasRect.height <= 0) {
+      if (isBrowserDebugEnabled()) {
+        logBrowserDebug("builder:marquee:apply-skipped", {
+          reason: "invalid-canvas-rect",
+          mode,
+          width: canvasRect.width,
+          height: canvasRect.height
+        });
+      }
+      return;
+    }
+
+    const renderWidth = engine.getRenderWidth();
+    const renderHeight = engine.getRenderHeight();
+    const candidateIds: string[] = [];
+
+    for (const record of state.layoutRecords) {
+      const entry = placedObjects.get(record.id);
+      if (!entry) {
+        continue;
+      }
+
+      const screenBounds = getScreenBoundsForEntry(entry, canvasRect, renderWidth, renderHeight);
+      if (!screenBounds) {
+        continue;
+      }
+
+      if (
+        intersectsScreenRect(
+          screenBounds.left,
+          screenBounds.top,
+          screenBounds.right,
+          screenBounds.bottom,
+          normalizedRect
+        )
+      ) {
+        candidateIds.push(record.id);
+      }
+    }
+
+    if (isBrowserDebugEnabled()) {
+      logBrowserDebug("builder:marquee:apply", {
+        mode,
+        selectionBefore: [...state.selectedObjectIds],
+        candidateIds,
+        rect: normalizedRect
+      });
+    }
+
+    if (mode === "replace") {
+      replaceSelection(candidateIds, candidateIds[candidateIds.length - 1] ?? null);
+      suppressNextPick = true;
+      return;
+    }
+
+    if (mode === "add") {
+      const nextSelectionIds = [...state.selectedObjectIds];
+      for (const id of candidateIds) {
+        if (!nextSelectionIds.includes(id)) {
+          nextSelectionIds.push(id);
+        }
+      }
+
+      applySelectionState(nextSelectionIds, state.primarySelectedObjectId);
+      suppressNextPick = true;
+      return;
+    }
+
+    const toggledSelectionIds = [...state.selectedObjectIds];
+    for (const id of candidateIds) {
+      const existingIndex = toggledSelectionIds.indexOf(id);
+      if (existingIndex >= 0) {
+        toggledSelectionIds.splice(existingIndex, 1);
+      } else {
+        toggledSelectionIds.push(id);
+      }
+    }
+
+    applySelectionState(toggledSelectionIds, state.primarySelectedObjectId);
+    suppressNextPick = true;
   };
 
   const updateObjectTransform = (
@@ -1192,17 +1919,105 @@ export async function createSceneBuilder({
     rotationY?: number;
     scale?: number;
   }): void => {
-    if (!state.selectedObjectId) {
+    const selectedObjectId = getPrimarySelectedObjectId();
+    if (!selectedObjectId) {
+      return;
+    }
+
+    const selectedObjectIds = normalizeSelectionIds(state.selectedObjectIds);
+    if (selectedObjectIds.length <= 1) {
+      const beforeSnapshot = captureHistorySnapshot();
+      const didChange = updateObjectTransform(selectedObjectId, patch);
+      if (!didChange) {
+        return;
+      }
+
+      pushUndoSnapshot(beforeSnapshot);
+      return;
+    }
+
+    const primaryEntry = placedObjects.get(selectedObjectId);
+    if (!primaryEntry) {
+      return;
+    }
+
+    const positionDelta: Partial<BuilderVector3> = {};
+    if (typeof patch.position?.x === "number" && Number.isFinite(patch.position.x)) {
+      positionDelta.x = patch.position.x - primaryEntry.layout.position.x;
+    }
+    if (typeof patch.position?.y === "number" && Number.isFinite(patch.position.y)) {
+      positionDelta.y = patch.position.y - primaryEntry.layout.position.y;
+    }
+    if (typeof patch.position?.z === "number" && Number.isFinite(patch.position.z)) {
+      positionDelta.z = patch.position.z - primaryEntry.layout.position.z;
+    }
+
+    const rotationDelta = typeof patch.rotationY === "number" && Number.isFinite(patch.rotationY)
+      ? patch.rotationY - primaryEntry.layout.rotationY
+      : undefined;
+
+    const scaleDelta = typeof patch.scale === "number" && Number.isFinite(patch.scale)
+      ? patch.scale - primaryEntry.layout.scale
+      : undefined;
+
+    const hasAnyDelta =
+      positionDelta.x !== undefined ||
+      positionDelta.y !== undefined ||
+      positionDelta.z !== undefined ||
+      rotationDelta !== undefined ||
+      scaleDelta !== undefined;
+    if (!hasAnyDelta) {
       return;
     }
 
     const beforeSnapshot = captureHistorySnapshot();
-    const didChange = updateObjectTransform(state.selectedObjectId, patch);
+    let didChange = false;
+
+    for (const objectId of selectedObjectIds) {
+      const entry = placedObjects.get(objectId);
+      if (!entry) {
+        continue;
+      }
+
+      const nextPatch: {
+        position?: Partial<BuilderVector3>;
+        rotationY?: number;
+        scale?: number;
+      } = {};
+
+      if (positionDelta.x !== undefined || positionDelta.y !== undefined || positionDelta.z !== undefined) {
+        const nextPositionPatch: Partial<BuilderVector3> = {};
+        if (positionDelta.x !== undefined) {
+          nextPositionPatch.x = entry.layout.position.x + positionDelta.x;
+        }
+        if (positionDelta.y !== undefined) {
+          nextPositionPatch.y = entry.layout.position.y + positionDelta.y;
+        }
+        if (positionDelta.z !== undefined) {
+          nextPositionPatch.z = entry.layout.position.z + positionDelta.z;
+        }
+        nextPatch.position = nextPositionPatch;
+      }
+
+      if (rotationDelta !== undefined) {
+        nextPatch.rotationY = entry.layout.rotationY + rotationDelta;
+      }
+
+      if (scaleDelta !== undefined) {
+        nextPatch.scale = Math.max(0.1, entry.layout.scale + scaleDelta);
+      }
+
+      const didUpdate = updateObjectTransform(objectId, nextPatch, { silentStatus: true });
+      didChange = didUpdate || didChange;
+    }
+
     if (!didChange) {
       return;
     }
 
     pushUndoSnapshot(beforeSnapshot);
+    state.statusMessage = `Updated ${selectedObjectIds.length} selected objects.`;
+    notify();
   };
 
   const toRouteVector = (value: Vector3): [number, number, number] => [
@@ -1571,7 +2386,8 @@ export async function createSceneBuilder({
     const beforeSnapshot = options?.recordHistory === false ? null : captureHistorySnapshot();
     const removedIndex = state.layoutRecords.findIndex((record) => record.id === objectId);
     const label = getAssetLabel(assetDefinitions, entry.layout.assetId);
-    const wasSelected = state.selectedObjectId === objectId;
+    const wasSelected = state.selectedObjectIds.includes(objectId);
+    const wasPrimarySelected = state.primarySelectedObjectId === objectId;
     if (gizmoInteractionState?.objectId === objectId) {
       cancelGizmoInteraction();
     }
@@ -1584,9 +2400,16 @@ export async function createSceneBuilder({
     }
 
     if (wasSelected) {
-      const nextSelection =
+      const remainingSelectedObjectIds = state.selectedObjectIds.filter((id) => id !== objectId);
+      const fallbackSelectionId =
         state.layoutRecords[removedIndex]?.id ?? state.layoutRecords[Math.max(0, removedIndex - 1)]?.id ?? null;
-      setSelection(nextSelection);
+      const nextSelectionIds = remainingSelectedObjectIds.length > 0
+        ? remainingSelectedObjectIds
+        : (fallbackSelectionId ? [fallbackSelectionId] : []);
+      const nextPrimarySelectionId = wasPrimarySelected
+        ? nextSelectionIds[nextSelectionIds.length - 1] ?? null
+        : state.primarySelectedObjectId;
+      applySelectionState(nextSelectionIds, nextPrimarySelectionId);
       return true;
     }
 
@@ -1599,11 +2422,48 @@ export async function createSceneBuilder({
   };
 
   const deleteSelectedObject = (): void => {
-    if (!state.selectedObjectId) {
+    const selectedObjectIds = normalizeSelectionIds(state.selectedObjectIds);
+    if (selectedObjectIds.length === 0) {
       return;
     }
 
-    deleteObjectByIdInternal(state.selectedObjectId);
+    if (selectedObjectIds.length === 1) {
+      deleteObjectByIdInternal(selectedObjectIds[0]);
+      return;
+    }
+
+    if (historyRestoreInFlight) {
+      return;
+    }
+
+    const beforeSnapshot = captureHistorySnapshot();
+    const selectedIdSet = new Set(selectedObjectIds);
+    if (gizmoInteractionState && selectedIdSet.has(gizmoInteractionState.objectId)) {
+      cancelGizmoInteraction();
+    }
+
+    let removedCount = 0;
+    for (const objectId of selectedObjectIds) {
+      const entry = placedObjects.get(objectId);
+      if (!entry) {
+        continue;
+      }
+
+      disposeEntry(entry);
+      removedCount += 1;
+    }
+
+    if (removedCount === 0) {
+      return;
+    }
+
+    state.layoutRecords = state.layoutRecords.filter((record) => !selectedIdSet.has(record.id));
+    applySelectionState([], null, { notify: false });
+    pushUndoSnapshot(beforeSnapshot);
+    state.statusMessage = `Deleted ${removedCount} selected object${removedCount === 1 ? "" : "s"}.`;
+    notify();
+
+    return;
   };
 
   const duplicateSelectedObject = async (): Promise<void> => {
@@ -1611,34 +2471,49 @@ export async function createSceneBuilder({
       return;
     }
 
-    if (!state.selectedObjectId) {
+    const selectedObjectIds = normalizeSelectionIds(state.selectedObjectIds);
+    const primarySelectedObjectId = getPrimarySelectedObjectId();
+    if (selectedObjectIds.length === 0 || !primarySelectedObjectId) {
       return;
     }
 
-    const source = placedObjects.get(state.selectedObjectId);
-    if (!source) {
-      return;
-    }
-
-    const duplicateRecord: BuilderLayoutRecord = {
-      ...cloneLayoutRecord(source.layout),
-      id: createObjectId(),
-      position: {
-        x: Number((source.layout.position.x + 2).toFixed(3)),
-        y: source.layout.position.y,
-        z: Number((source.layout.position.z + 2).toFixed(3))
-      }
-    };
     const beforeSnapshot = captureHistorySnapshot();
+    const duplicatedObjectIds: string[] = [];
+    const duplicatedIdBySourceId = new Map<string, string>();
 
-    const didInstantiate = await instantiateRecord(duplicateRecord);
-    if (!didInstantiate) {
+    for (const sourceObjectId of selectedObjectIds) {
+      const source = placedObjects.get(sourceObjectId);
+      if (!source) {
+        continue;
+      }
+
+      const duplicateRecord: BuilderLayoutRecord = {
+        ...cloneLayoutRecord(source.layout),
+        id: createObjectId()
+      };
+
+      const didInstantiate = await instantiateRecord(duplicateRecord);
+      if (!didInstantiate) {
+        continue;
+      }
+
+      duplicatedObjectIds.push(duplicateRecord.id);
+      duplicatedIdBySourceId.set(sourceObjectId, duplicateRecord.id);
+    }
+
+    if (duplicatedObjectIds.length === 0) {
       return;
     }
 
-    state.statusMessage = `Duplicated ${getAssetLabel(assetDefinitions, duplicateRecord.assetId)}.`;
+    const nextPrimaryDuplicatedId = duplicatedIdBySourceId.get(primarySelectedObjectId)
+      ?? duplicatedObjectIds[duplicatedObjectIds.length - 1]
+      ?? null;
+
+    state.statusMessage = duplicatedObjectIds.length === 1
+      ? "Duplicated selected object."
+      : `Duplicated ${duplicatedObjectIds.length} selected objects.`;
     pushUndoSnapshot(beforeSnapshot);
-    setSelection(duplicateRecord.id);
+    replaceSelection(duplicatedObjectIds, nextPrimaryDuplicatedId);
   };
 
   const exportLayout = (): string => serializeBuilderLayout(
@@ -2026,14 +2901,17 @@ export async function createSceneBuilder({
     const nextLayoutRecords = snapshot.layoutRecords
       .filter((record) => record.assetId !== assetId)
       .map(cloneLayoutRecord);
-    const selectedObjectId =
-      snapshot.selectedObjectId && nextLayoutRecords.some((record) => record.id === snapshot.selectedObjectId)
-        ? snapshot.selectedObjectId
-        : nextLayoutRecords[0]?.id ?? null;
+    const validIds = new Set(nextLayoutRecords.map((record) => record.id));
+    const rawSelectionIds = snapshot.selectedObjectIds.length > 0
+      ? snapshot.selectedObjectIds
+      : (snapshot.selectedObjectId ? [snapshot.selectedObjectId] : []);
+    const selectedObjectIds = rawSelectionIds.filter((id) => validIds.has(id));
+    const primarySelectedObjectId = resolvePrimarySelectionId(selectedObjectIds, snapshot.primarySelectedObjectId);
     return {
       ...snapshot,
       layoutRecords: nextLayoutRecords,
-      selectedObjectId
+      selectedObjectIds,
+      primarySelectedObjectId
     };
   };
 
@@ -2120,11 +2998,42 @@ export async function createSceneBuilder({
     }
 
     const pickedMesh = pointerInfo.pickInfo?.pickedMesh ?? null;
-    setSelection(resolveObjectIdForMesh(pickedMesh));
+    const selectedObjectId = resolveObjectIdForMesh(pickedMesh);
+    const isAdditiveClick = Boolean(pointerEvent?.shiftKey);
+    const isToggleClick = Boolean(pointerEvent?.ctrlKey || pointerEvent?.metaKey);
+
+    if (!selectedObjectId) {
+      if (!isAdditiveClick && !isToggleClick) {
+        clearSelection();
+      }
+      return;
+    }
+
+    if (isToggleClick) {
+      toggleSelection(selectedObjectId);
+      return;
+    }
+
+    if (isAdditiveClick) {
+      addToSelection(selectedObjectId);
+      return;
+    }
+
+    replaceSelection([selectedObjectId], selectedObjectId);
   });
 
   const handleKeyDown = (event: KeyboardEvent): void => {
-    if (event.repeat || event.key.toLowerCase() !== "r") {
+    if (event.repeat) {
+      return;
+    }
+
+    const key = event.key.toLowerCase();
+    if (key === "escape") {
+      clearSelection();
+      return;
+    }
+
+    if (key !== "r") {
       return;
     }
 
@@ -2148,6 +3057,8 @@ export async function createSceneBuilder({
         texturePresent: boolean;
       }>;
       selectedMeshBoundingBoxes: boolean[];
+      selectedObjectIds: string[];
+      primarySelectedObjectId: string | null;
       selectedObjectId: string | null;
       transformMode: BuilderTransformMode;
     };
@@ -2157,11 +3068,12 @@ export async function createSceneBuilder({
   if (isBrowserDebugEnabled() && typeof window !== "undefined") {
     debugApi = {
       applySelectedRootDeltaForTest: (delta) => {
-        if (!state.selectedObjectId) {
+        const selectedObjectId = getPrimarySelectedObjectId();
+        if (!selectedObjectId) {
           return false;
         }
 
-        const entry = placedObjects.get(state.selectedObjectId);
+        const entry = placedObjects.get(selectedObjectId);
         if (!entry) {
           return false;
         }
@@ -2178,7 +3090,8 @@ export async function createSceneBuilder({
         completeGizmoInteraction();
       },
       getState: () => {
-        const selectedEntry = state.selectedObjectId ? placedObjects.get(state.selectedObjectId) : null;
+        const primarySelectedObjectId = getPrimarySelectedObjectId();
+        const selectedEntry = primarySelectedObjectId ? placedObjects.get(primarySelectedObjectId) : null;
         const selectedMaterialStates = selectedEntry
           ? selectedEntry.meshes.map((mesh) => {
               const meshMaterial = mesh.material as {
@@ -2211,7 +3124,9 @@ export async function createSceneBuilder({
           gizmoHovering: gizmoManager.isHovered,
           selectedMaterialStates,
           selectedMeshBoundingBoxes: selectedEntry?.meshes.map((mesh) => mesh.showBoundingBox) ?? [],
-          selectedObjectId: state.selectedObjectId,
+          selectedObjectIds: [...state.selectedObjectIds],
+          primarySelectedObjectId,
+          selectedObjectId: deriveCompatibilitySelectedObjectId(),
           transformMode
         };
       }
@@ -2236,6 +3151,10 @@ export async function createSceneBuilder({
     routeOverlayMaterials?.defaultPoint.dispose(false, true);
     routeOverlayMaterials?.selectedPoint.dispose(false, true);
     routeOverlayMaterials = null;
+    if (multiSelectionTransformPivotNode) {
+      multiSelectionTransformPivotNode.dispose(false, true);
+      multiSelectionTransformPivotNode = null;
+    }
     clearAllObjects();
     assetLibrary.dispose();
     gizmoManager.dispose();
@@ -2273,6 +3192,13 @@ export async function createSceneBuilder({
     isCameraNavigationEnabled: () => developmentCamera.isNavigationEnabled(),
     getTransformMode: () => transformMode,
     placeAsset,
+    canStartMarqueeSelectionAt,
+    applyMarqueeSelection,
+    replaceSelection,
+    addToSelection,
+    toggleSelection,
+    removeFromSelection,
+    clearSelection,
     redo,
     selectObjectById,
     setCameraNavigationEnabled,

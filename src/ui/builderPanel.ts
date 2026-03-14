@@ -495,10 +495,11 @@ export function createBuilderPanel(
     sceneObjectsElement.innerHTML = snapshot.objects
       .map((object) => {
         const assetLabel = object.assetLabel;
-        const isSelected = object.id === snapshot.selectedObjectId;
+        const isSelected = snapshot.selectedObjectIds.includes(object.id);
+        const isPrimarySelected = object.id === snapshot.primarySelectedObjectId;
 
         return `
-          <button class="builder-scene-object-item${isSelected ? " is-selected" : ""}" type="button" data-object-id="${escapeHtml(object.id)}">
+          <button class="builder-scene-object-item${isSelected ? " is-selected" : ""}${isPrimarySelected ? " is-primary" : ""}" type="button" data-object-id="${escapeHtml(object.id)}"${isPrimarySelected ? ' aria-current="true"' : ""}>
             ${escapeHtml(assetLabel)}
           </button>
         `;
@@ -507,7 +508,9 @@ export function createBuilderPanel(
   };
 
   const renderSelection = (snapshot: BuilderSceneSnapshot): void => {
-    const selection = snapshot.selectedObject;
+    const selection = snapshot.primarySelectedObject ?? snapshot.selectedObject;
+    const selectedObjectCount = snapshot.selectedObjectIds.length;
+    const hasMultipleSelection = selectedObjectCount > 1;
     const hasSelection = Boolean(selection);
 
     if (!selection) {
@@ -516,6 +519,15 @@ export function createBuilderPanel(
           <p class="builder-selection-title">No object selected</p>
           <p class="builder-selection-meta">Select an object in the scene to edit it here.</p>
           <p class="builder-selection-meta">Placed objects: ${snapshot.objects.length}</p>
+        </div>
+      `;
+    } else if (hasMultipleSelection) {
+      selectionSummaryElement.innerHTML = `
+        <div class="builder-selection-card">
+          <p class="builder-selection-title">${selectedObjectCount} objects selected</p>
+          <p class="builder-selection-meta">Primary: ${escapeHtml(selection.assetLabel)}</p>
+          <p class="builder-selection-meta">${escapeHtml(selection.id)}</p>
+          <p class="builder-selection-meta">Transform fields currently show and edit the primary selection only. Group/mixed-value editing is not available yet.</p>
         </div>
       `;
     } else {
@@ -908,7 +920,7 @@ export function createBuilderPanel(
 
     if (key === "escape") {
       event.preventDefault();
-      sceneBuilder.selectObjectById(null);
+      sceneBuilder.clearSelection();
     }
   };
 
@@ -958,7 +970,17 @@ export function createBuilderPanel(
     if (objectSelectButton) {
       const objectId = objectSelectButton.dataset.objectId;
       if (objectId) {
-        sceneBuilder.selectObjectById(objectId);
+        if (event.ctrlKey || event.metaKey) {
+          sceneBuilder.toggleSelection(objectId);
+          return;
+        }
+
+        if (event.shiftKey) {
+          sceneBuilder.addToSelection(objectId);
+          return;
+        }
+
+        sceneBuilder.replaceSelection([objectId], objectId);
       }
     }
   });
