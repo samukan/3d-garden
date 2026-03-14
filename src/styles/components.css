@@ -865,6 +865,361 @@
   background: transparent;
 }
 
+#app[data-app-mode="builder"][data-builder-shell="v2"] .builder-top-bar,
+#app[data-app-mode="builder"][data-builder-shell="v2"] .builder-shell-panel,
+#app[data-app-mode="builder"][data-builder-shell="v2"] .builder-rollout-panel {
+  backdrop-filter: none;
+  box-shadow: none;
+  border-radius: 4px;
+  border-color: var(--color-border-strong);
+}
+
+#app[data-app-mode="builder"][data-builder-shell="v2"] .builder-top-bar {
+  background: color-mix(in srgb, var(--color-surface-2) 92%, #10161f);
+  padding: 5px 8px;
+  border-width: 1px;
+  border-top: none;
+  border-left: none;
+  border-right: none;
+  border-bottom-color: color-mix(in srgb, var(--color-border-strong) 75%, transparent);
+}
+
+#app[data-app-mode="builder"][data-builder-shell="v2"] .builder-shell-panel {
+  background: color-mix(in srgb, var(--color-surface-2) 90%, #0f151e);
+  padding: 8px;
+  border-top: none;
+  border-bottom: none;
+}
+
+#app[data-app-mode="builder"][data-builder-shell="v2"] .builder-top-bar-main,
+#app[data-app-mode="builder"][data-builder-shell="v2"] .builder-top-bar-actions {
+  gap: 8px;
+  align-items: center;
+}
+
+#app[data-app-mode="builder"][data-builder-shell="v2"] .builder-v2-toolbar-main {
+  min-height: 2.2rem;
+}
+
+#app[data-app-mode="builder"][data-builder-shell="v2"] .builder-toolbar-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+#app[data-app-mode="builder"][data-builder-shell="v2"] .builder-toolbar-group + .builder-toolbar-group {
+  border-left: 1px solid color-mix(in srgb, var(--color-border-subtle) 72%, transparent);
+  padding-left: 8px;
+  margin-left: 4px;
+}
+
+#app[data-app-mode="builder"][data-builder-shell="v2"] .builder-button,
+#app[data-app-mode="builder"][data-builder-shell="v2"] .builder-tab,
+#app[data-app-mode="builder"][data-builder-shell="v2"] .builder-palette-item,
+#app[data-app-mode="builder"][data-builder-shell="v2"] .builder-scene-object-item {
+  min-height: 1.75rem;
+  padding: 0 8px;
+  font-size: var(--font-size-13);
+  border-radius: 3px;
+  border-color: color-mix(in srgb, var(--color-border-strong) 82%, transparent);
+  background: color-mix(in srgb, var(--color-surface-3) 86%, #131a24);
+}
+
+#app[data-app-mode="builder"][data-builder-shell="v2"] .builder-tab,
+#app[data-app-mode="builder"][data-builder-shell="v2"] .builder-button {
+  min-height: 1.9rem;
+}
+
+#app[data-app-mode="builder"][data-builder-shell="v2"] .builder-button-primary {
+  background: color-mix(in srgb, var(--color-accent-soft) 44%, #1a2433);
+  border-color: color-mix(in srgb, var(--color-accent-strong) 54%, var(--color-border-strong));
+}
+
+#app[data-app-mode="builder"][data-builder-shell="v2"] .builder-tab {
+  color: var(--color-text-muted);
+}
+
+#app[data-app-mode="builder"][data-builder-shell="v2"] .builder-tab.is-active {
+  color: var(--color-text-primary);
+  background: color-mix(in srgb, var(--color-surface-3) 94%, #18202c);
+  border-color: color-mix(in srgb, var(--color-accent-strong) 34%, var(--color-border-strong));
+}
+
+#app[data-app-mode="builder"][data-builder-shell="v2"] .builder-top-bar-field {
+  min-width: 8.5rem;
+  max-width: 12rem;
+}
+
+#app[data-app-mode="builder"][data-builder-shell="v2"] .builder-top-bar-field input,
+#app[data-app-mode="builder"][data-builder-shell="v2"] .builder-field input,
+#app[data-app-mode="builder"][data-builder-shell="v2"] .builder-select {
+  min-height: 1.9rem;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--color-surface-sunken) 78%, #0e141d);
+}
+
+#app[data-app-mode="builder"][data-builder-shell="v2"] .builder-panel-header {
+  gap: 2px;
+}
+
+#app[data-app-mode="builder"][data-builder-shell="v2"] .builder-panel-header h2 {
+  font-size: var(--font-size-14);
+  line-height: 1.2;
+  letter-spacing: 0.01em;
+}
+
+#app[data-app-mode="builder"][data-builder-shell="v2"] .builder-panel-copy {
+  font-size: var(--font-size-12);
+  color: color-mix(in srgb, var(--color-text-muted) 84%, var(--color-text-secondary));
+}
+
+#app[data-app-mode="builder"][data-builder-shell="v2"] .builder-panel-section {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top-color: color-mix(in srgb, var(--color-border-subtle) 72%, transparent);
+}
+
+#app[data-app-mode="builder"][data-builder-shell="v2"] .builder-panel-tabs {
+  margin-top: 0;
+  gap: 4px;
+}
+
+#app[data-app-mode="builder"][data-builder-shell="v2"] .builder-pane-header {
+  margin-bottom: 2px;
+}
+
+#app[data-app-mode="builder"][data-builder-shell="v2"] .builder-pane-mode-tabs {
+  margin-bottom: 8px;
+}
+
+#app[data-app-mode="builder"][data-builder-shell="v2"] .builder-pane-surface {
+  border: 1px solid color-mix(in srgb, var(--color-border-subtle) 70%, transparent);
+  border-radius: 3px;
+  padding: 8px;
+  background: color-mix(in srgb, var(--color-surface-3) 42%, transparent);
+}
+
+#app[data-app-mode="builder"][data-builder-shell="v2"] .builder-pane-surface-assets {
+  background: color-mix(in srgb, var(--color-surface-3) 46%, transparent);
+}
+
+#app[data-app-mode="builder"][data-builder-shell="v2"] #builder-library-panel {
+  overflow: hidden;
+}
+
+#app[data-app-mode="builder"][data-builder-shell="v2"] #builder-library-panel .builder-tab-panel {
+  min-height: 0;
+}
+
+#app[data-app-mode="builder"][data-builder-shell="v2"] #builder-scene-panel {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+#app[data-app-mode="builder"][data-builder-shell="v2"] #builder-scene-panel .builder-panel-section-fill {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+}
+
+#app[data-app-mode="builder"][data-builder-shell="v2"] .builder-assets-pane-layout {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+#app[data-app-mode="builder"][data-builder-shell="v2"] .builder-assets-pane-top {
+  flex: 0 0 auto;
+}
+
+#app[data-app-mode="builder"][data-builder-shell="v2"] .builder-assets-pane-list-region {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid color-mix(in srgb, var(--color-border-subtle) 72%, transparent);
+}
+
+#app[data-app-mode="builder"][data-builder-shell="v2"] .builder-assets-pane-footer {
+  flex: 0 0 auto;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid color-mix(in srgb, var(--color-border-subtle) 72%, transparent);
+}
+
+#app[data-app-mode="builder"][data-builder-shell="v2"] .builder-pane-surface-hierarchy {
+  background: color-mix(in srgb, var(--color-surface-sunken) 28%, transparent);
+}
+
+#app[data-app-mode="builder"][data-builder-shell="v2"] .builder-pane-subheader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 2px;
+}
+
+#app[data-app-mode="builder"][data-builder-shell="v2"] .builder-pane-subheader-meta {
+  margin: 0;
+  font-size: var(--font-size-12);
+  color: var(--color-text-muted);
+}
+
+#app[data-app-mode="builder"][data-builder-shell="v2"] .builder-asset-browser-controls {
+  display: grid;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+#app[data-app-mode="builder"][data-builder-shell="v2"] .builder-asset-search-row {
+  gap: 4px;
+}
+
+#app[data-app-mode="builder"][data-builder-shell="v2"] .builder-asset-filter-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+#app[data-app-mode="builder"][data-builder-shell="v2"] .builder-asset-filter-row .builder-field {
+  gap: 4px;
+}
+
+#app[data-app-mode="builder"][data-builder-shell="v2"] .builder-asset-filter-row .builder-select,
+#app[data-app-mode="builder"][data-builder-shell="v2"] .builder-asset-search-row input {
+  margin-top: 0;
+}
+
+#app[data-app-mode="builder"][data-builder-shell="v2"] .builder-palette-group + .builder-palette-group,
+#app[data-app-mode="builder"][data-builder-shell="v2"] .builder-scene-object-list {
+  margin-top: 8px;
+}
+
+#app[data-app-mode="builder"][data-builder-shell="v2"] .builder-palette-group-title,
+#app[data-app-mode="builder"][data-builder-shell="v2"] .builder-palette-group-subtitle {
+  margin-bottom: 6px;
+  font-size: var(--font-size-12);
+  color: color-mix(in srgb, var(--color-text-muted) 90%, var(--color-text-secondary));
+}
+
+#app[data-app-mode="builder"][data-builder-shell="v2"] .builder-palette-group-items,
+#app[data-app-mode="builder"][data-builder-shell="v2"] .builder-scene-object-list {
+  gap: 2px;
+}
+
+#app[data-app-mode="builder"][data-builder-shell="v2"] .builder-selection-card,
+#app[data-app-mode="builder"][data-builder-shell="v2"] .builder-empty-state {
+  border-radius: 3px;
+  box-shadow: none;
+  background: color-mix(in srgb, var(--color-surface-3) 64%, transparent);
+  border-color: color-mix(in srgb, var(--color-border-subtle) 62%, transparent);
+  padding: 8px;
+}
+
+#app[data-app-mode="builder"][data-builder-shell="v2"] .builder-empty-state {
+  background: transparent;
+  border-style: dashed;
+}
+
+#app[data-app-mode="builder"][data-builder-shell="v2"] .builder-editor-hint {
+  padding: 2px 0;
+  border: none;
+  background: transparent;
+}
+
+#app[data-app-mode="builder"][data-builder-shell="v2"] .builder-editor-hint .builder-selection-title {
+  font-size: var(--font-size-13);
+  font-weight: var(--font-weight-medium);
+}
+
+#app[data-app-mode="builder"][data-builder-shell="v2"] .builder-editor-hint .builder-selection-meta {
+  margin-top: 2px;
+  font-size: var(--font-size-12);
+}
+
+#app[data-app-mode="builder"][data-builder-shell="v2"] .builder-inspector-section {
+  border-top-color: color-mix(in srgb, var(--color-border-subtle) 62%, transparent);
+}
+
+#app[data-app-mode="builder"][data-builder-shell="v2"] .builder-property-grid {
+  display: grid;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+#app[data-app-mode="builder"][data-builder-shell="v2"] .builder-property-row {
+  display: grid;
+  grid-template-columns: 6rem minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+}
+
+#app[data-app-mode="builder"][data-builder-shell="v2"] .builder-property-label {
+  font-size: var(--font-size-12);
+  color: color-mix(in srgb, var(--color-text-muted) 86%, var(--color-text-secondary));
+}
+
+#app[data-app-mode="builder"][data-builder-shell="v2"] .builder-asset-selection-inline {
+  margin-top: 0;
+}
+
+#app[data-app-mode="builder"][data-builder-shell="v2"] .builder-asset-selection-inline .builder-selection-title {
+  font-size: var(--font-size-13);
+  margin-top: 2px;
+}
+
+#app[data-app-mode="builder"][data-builder-shell="v2"] .builder-asset-selection-inline .builder-selection-meta {
+  margin-top: 2px;
+  margin-bottom: 8px;
+}
+
+#app[data-app-mode="builder"][data-builder-shell="v2"] .builder-inspector-utility-row,
+#app[data-app-mode="builder"][data-builder-shell="v2"] .builder-inspector-actions-row {
+  margin-top: 8px;
+}
+
+#app[data-app-mode="builder"][data-builder-shell="v2"] .builder-inspector-actions-row .builder-button {
+  background: color-mix(in srgb, var(--color-surface-3) 76%, transparent);
+}
+
+#app[data-app-mode="builder"][data-builder-shell="v2"] .builder-inspector-actions-row .builder-button-danger {
+  background: color-mix(in srgb, var(--color-danger-soft) 14%, var(--color-surface-3));
+}
+
+#app[data-app-mode="builder"][data-builder-shell="v2"] .builder-tab.is-active,
+#app[data-app-mode="builder"][data-builder-shell="v2"] .builder-palette-item.is-selected,
+#app[data-app-mode="builder"][data-builder-shell="v2"] .builder-scene-object-item.is-selected {
+  background: color-mix(in srgb, var(--color-accent-soft) 16%, var(--color-surface-3));
+  border-color: color-mix(in srgb, var(--color-accent-strong) 24%, var(--color-border-strong));
+  color: var(--color-text-primary);
+}
+
+#app[data-app-mode="builder"][data-builder-shell="v2"] .builder-field-grid {
+  gap: 8px;
+  margin-top: 8px;
+}
+
+#app[data-app-mode="builder"][data-builder-shell="v2"] .builder-world-status {
+  min-height: 1.8rem;
+  border-radius: 3px;
+  padding: 0 7px;
+  background: color-mix(in srgb, var(--color-surface-3) 74%, transparent);
+  border-color: color-mix(in srgb, var(--color-border-subtle) 78%, transparent);
+  color: color-mix(in srgb, var(--color-text-muted) 86%, var(--color-text-secondary));
+  letter-spacing: 0.03em;
+}
+
+#app[data-app-mode="builder"][data-builder-shell="v2"] .builder-rollout-title {
+  font-size: var(--font-size-13);
+}
+
+#app[data-app-mode="builder"][data-builder-shell="v2"] .builder-rollout-panel {
+  background: color-mix(in srgb, var(--color-surface-overlay) 82%, #111823);
+}
+
 .builder-toast.is-dismissed {
   opacity: 0;
   transform: translateY(-6px);

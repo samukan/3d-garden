@@ -209,6 +209,70 @@
   pointer-events: none !important;
 }
 
+#app[data-app-mode="builder"][data-builder-shell="v2"] .builder-workspace {
+  grid-template-columns: clamp(15rem, 20vw, 18rem) minmax(0, 1fr) clamp(17rem, 24vw, 21rem);
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 0;
+  inset: 0;
+  grid-template-areas:
+    "toolbar toolbar toolbar"
+    "left viewport right";
+}
+
+#app[data-app-mode="builder"][data-builder-shell="v2"] .builder-top-bar,
+#app[data-app-mode="builder"][data-builder-shell="v2"] .builder-library-panel,
+#app[data-app-mode="builder"][data-builder-shell="v2"] .builder-center-spacer,
+#app[data-app-mode="builder"][data-builder-shell="v2"] .builder-inspector-panel,
+#app[data-app-mode="builder"][data-builder-shell="v2"] .builder-resize-handle {
+  grid-column: auto;
+  grid-row: auto;
+}
+
+#app[data-app-mode="builder"][data-builder-shell="v2"] .builder-top-bar {
+  grid-area: toolbar;
+}
+
+#app[data-app-mode="builder"][data-builder-shell="v2"] .builder-library-panel {
+  grid-area: left;
+}
+
+#app[data-app-mode="builder"][data-builder-shell="v2"] .builder-center-spacer {
+  grid-area: viewport;
+  display: block;
+  border: 1px solid color-mix(in srgb, var(--color-border-subtle) 72%, transparent);
+  border-radius: 0;
+  border-top: none;
+  border-bottom: none;
+  background: transparent;
+}
+
+#app[data-app-mode="builder"][data-builder-shell="v2"] .builder-inspector-panel {
+  grid-area: right;
+}
+
+#app[data-app-mode="builder"][data-builder-shell="v2"] .builder-resize-handle,
+#app[data-app-mode="builder"][data-builder-shell="v2"] .builder-side-toggle {
+  display: none !important;
+}
+
+#app[data-app-mode="builder"][data-builder-shell="v2"] .builder-shell-panel {
+  height: 100%;
+  overflow: auto;
+  border-radius: 0;
+}
+
+@media (max-width: 1560px) {
+  #app[data-app-mode="builder"][data-builder-shell="v2"] .builder-workspace {
+    grid-template-columns: clamp(14.5rem, 21vw, 17.5rem) minmax(0, 1fr) clamp(16.5rem, 25vw, 20rem);
+  }
+}
+
+@media (max-width: 1320px) {
+  #app[data-app-mode="builder"][data-builder-shell="v2"] .builder-workspace {
+    grid-template-columns: clamp(13.75rem, 23vw, 16.5rem) minmax(0, 1fr) clamp(15.5rem, 26vw, 18.5rem);
+  }
+}
+
 .builder-shell-panel {
   pointer-events: auto;
   display: flex;

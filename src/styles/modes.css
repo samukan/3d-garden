@@ -47,6 +47,26 @@
   padding: 0 var(--space-3);
 }
 
+#app[data-app-mode="builder"][data-builder-shell="v2"] .status-badge {
+  min-height: 1.9rem;
+  padding: 0 var(--space-2);
+  border-radius: 4px;
+  border-color: color-mix(in srgb, var(--color-border-subtle) 78%, transparent);
+  background: color-mix(in srgb, var(--color-surface-2) 56%, transparent);
+  box-shadow: none;
+  color: var(--color-text-secondary);
+}
+
+#app[data-app-mode="builder"][data-builder-shell="v2"] .status-item strong {
+  font-size: var(--font-size-14);
+  font-weight: var(--font-weight-medium);
+}
+
+#app[data-app-mode="builder"][data-builder-shell="v2"] .status-item small {
+  font-size: var(--font-size-12);
+  letter-spacing: 0.04em;
+}
+
 #app[data-app-mode="builder"] .brand-card {
   position: fixed;
   left: var(--space-5);

@@ -146,6 +146,7 @@ test("boots builder mode and supports basic layout actions", async ({ page, base
   await expect(page.locator("#builder-transform-mode-move")).toBeVisible();
   await expect(page.locator("#builder-transform-mode-rotate")).toBeVisible();
   await expect(page.locator("#builder-transform-mode-scale")).toBeVisible();
+  await expect(page.locator("#builder-toolbar-upload-asset")).toBeVisible();
   await expect(page.locator("#builder-advanced-tools-toggle")).toBeVisible();
   await expect(page.locator("#builder-toggle-library-panel")).toBeVisible();
   await expect(page.locator("#builder-toggle-inspector-panel")).toBeVisible();
@@ -297,4 +298,28 @@ test("boots builder mode and supports basic layout actions", async ({ page, base
 
   expect(shaderCompileErrors, "Builder should not emit Babylon shader compile errors in WebGL mode.").toHaveLength(0);
   expect(pageErrors, "No uncaught browser page errors should occur during builder bootstrap.").toHaveLength(0);
+});
+
+test("v2 shell allows selecting an asset and adding it to scene", async ({ page, baseURL }) => {
+  await page.goto(`${baseURL}/?renderer=webgl&appMode=builder&builderShell=v2&debugBrowserLogs=1`, {
+    waitUntil: "domcontentloaded"
+  });
+
+  await expect(page.locator("#builder-workspace")).toBeVisible();
+  await expect(page.locator("#builder-toolbar-upload-asset")).toBeVisible();
+  await expect(page.locator("#builder-status")).toContainText("Builder ready", {
+    timeout: 20_000
+  });
+
+  const firstPaletteButton = page.locator("#builder-palette button").first();
+  await expect(firstPaletteButton).toBeVisible();
+  await firstPaletteButton.click();
+
+  await expect(page.locator("#builder-place-asset")).toBeVisible();
+  await page.locator("#builder-place-asset").click();
+
+  await expect(page.locator("#builder-status")).toContainText("Placed", {
+    timeout: 10_000
+  });
+  await expect(page.locator(".builder-scene-object-item")).toHaveCount(1);
 });

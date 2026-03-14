@@ -7,6 +7,7 @@ import { initEngine } from "./engine/initEngine";
 import { startMenuBackgroundRuntime } from "./menu/menuBackgroundRuntime";
 import { registerCoreShaders } from "./engine/registerCoreShaders";
 import { createBuilderPanel } from "./ui/builderPanel";
+import { createBuilderPanelV2 } from "./ui/builderPanelV2";
 import { createMenuPanel } from "./ui/menuPanel";
 import { createStatusBar } from "./ui/statusBar";
 import {
@@ -175,6 +176,7 @@ async function bootstrap(): Promise<void> {
   };
 
   if (activeAppRoute.mode === "menu") {
+    appElement.dataset.builderShell = activeAppRoute.builderShell;
     renderMenuMode(activeAppRoute.notice);
     void startMenuBackgroundRuntime({
       canvas,
@@ -224,6 +226,7 @@ async function bootstrap(): Promise<void> {
   });
 
   appElement.dataset.appMode = activeAppRoute.mode;
+  appElement.dataset.builderShell = activeAppRoute.builderShell;
   canvas.hidden = false;
   menuPanelElement.hidden = true;
   statusElement.hidden = false;
@@ -269,7 +272,11 @@ async function bootstrap(): Promise<void> {
 
     const hasUnsavedChanges = (): boolean => builderController.exportLayout() !== lastSavedLayout;
 
-    const builderPanel = createBuilderPanel(builderWorkspace, builderController, {
+    const createBuilderPanelController = activeAppRoute.builderShell === "v2"
+      ? createBuilderPanelV2
+      : createBuilderPanel;
+
+    const builderPanel = createBuilderPanelController(builderWorkspace, builderController, {
       onBackToMenu: () => {
         if (hasUnsavedChanges()) {
           const confirmed = window.confirm("You have unsaved changes. Return to the menu anyway?");

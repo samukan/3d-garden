@@ -2,6 +2,9 @@ import type { BuilderTransformMode, SceneBuilderController } from "../builder/sc
 import type { BuilderPaletteItem, BuilderRouteEditState, BuilderSceneSnapshot } from "../builder/builderTypes";
 import { DEFAULT_UPLOADED_ASSET_CATEGORY, type AssetId } from "../generation/natureKitAssetManifest";
 import { escapeHtml } from "../utils/html";
+import { createLeftRolloutPanel, getBuilderLeftPanelElements, leftPanelMarkup } from "./builder-panels/builderLeftPanel";
+import { getBuilderRightPanelElements, rightPanelMarkup } from "./builder-panels/builderRightPanel";
+import { getBuilderToolbarElements, toolbarMarkup } from "./builder-panels/builderToolbarPanel";
 
 export interface BuilderPanelController {
   dispose: () => void;
@@ -23,214 +26,6 @@ export interface CreateBuilderPanelOptions {
   onViewWorld: () => void;
   worldState: BuilderPanelWorldState;
 }
-
-const topBarMarkup = `
-  <div class="builder-top-bar-main">
-    <div class="builder-top-bar-actions builder-top-bar-actions-world">
-      <label class="builder-field builder-top-bar-field">
-        <span class="builder-visually-hidden">World name</span>
-        <input id="builder-world-name" type="text" maxlength="80" placeholder="World name" aria-label="World name" />
-      </label>
-      <button id="builder-save-world" class="ui-button builder-button builder-button-primary" type="button">Save New</button>
-      <button id="builder-save-world-as" class="ui-button builder-button" type="button">Save As</button>
-      <button id="builder-view-world" class="ui-button builder-button" type="button">View Saved</button>
-      <button id="builder-back-to-menu" class="ui-button builder-button" type="button">Back To Menu</button>
-    </div>
-    <div class="builder-top-bar-actions builder-top-bar-actions-tools">
-      <button id="builder-camera-nav-toggle" class="ui-button builder-button builder-button-camera" type="button" aria-pressed="false">Object Edit Mode</button>
-      <div class="builder-transform-mode-group" role="group" aria-label="Transform mode">
-        <button id="builder-transform-mode-move" class="ui-button builder-button builder-transform-mode-button" type="button" data-transform-mode="move" aria-pressed="true">Move</button>
-        <button id="builder-transform-mode-rotate" class="ui-button builder-button builder-transform-mode-button" type="button" data-transform-mode="rotate" aria-pressed="false">Rotate</button>
-        <button id="builder-transform-mode-scale" class="ui-button builder-button builder-transform-mode-button" type="button" data-transform-mode="scale" aria-pressed="false">Scale</button>
-      </div>
-      <button id="builder-advanced-tools-toggle" class="ui-button builder-button" type="button" aria-expanded="false" aria-controls="builder-advanced-tools-panel">Advanced Tools</button>
-      <p id="builder-world-status" class="builder-status builder-world-status" aria-live="polite"></p>
-    </div>
-  </div>
-  <div id="builder-advanced-tools-panel" class="builder-advanced-tools-panel" hidden>
-    <div class="builder-advanced-tools-header">
-      <p class="builder-panel-kicker">Advanced Tools</p>
-      <button id="builder-advanced-tools-close" class="ui-button builder-button" type="button">Close</button>
-    </div>
-    <div class="builder-action-row builder-action-row-split">
-      <button id="builder-export" class="ui-button builder-button builder-button-block" type="button">Export JSON</button>
-      <button id="builder-import" class="ui-button builder-button builder-button-block" type="button">Import JSON</button>
-    </div>
-    <div class="builder-action-row builder-action-row-split">
-      <button id="builder-download-world-package" class="ui-button builder-button builder-button-block" type="button">Download Package</button>
-      <button id="builder-upload-world-package" class="ui-button builder-button builder-button-block" type="button">Upload Package</button>
-      <input id="builder-upload-world-package-input" type="file" accept=".sgw,application/octet-stream,application/zip" hidden />
-    </div>
-    <div class="builder-action-row builder-action-row-split">
-      <button id="builder-download-world-json" class="ui-button builder-button builder-button-block" type="button">Download JSON</button>
-      <button id="builder-upload-world-json" class="ui-button builder-button builder-button-block" type="button">Upload JSON</button>
-      <input id="builder-upload-world-json-input" type="file" accept=".json,application/json" hidden />
-    </div>
-    <div class="builder-panel-section builder-panel-section-tight builder-camera-routes">
-      <p class="builder-panel-kicker">Camera Routes</p>
-      <div class="builder-action-row builder-action-row-split">
-        <button id="builder-route-mode-toggle" class="ui-button builder-button builder-button-block" type="button" aria-pressed="false">Route Mode Off</button>
-        <button id="builder-route-create" class="ui-button builder-button builder-button-block" type="button">Create Route</button>
-      </div>
-      <div class="builder-action-row builder-action-row-split">
-        <button id="builder-route-add-point" class="ui-button builder-button builder-button-block" type="button">Add Current Camera Point</button>
-        <button id="builder-route-delete" class="ui-button builder-button builder-button-danger builder-button-block" type="button">Delete Route</button>
-      </div>
-      <label class="builder-field builder-advanced-tools-label" for="builder-route-select">
-        <span>Selected Route</span>
-        <select id="builder-route-select" class="builder-select"></select>
-      </label>
-      <label class="builder-field builder-advanced-tools-label" for="builder-route-default-select">
-        <span>Default Route</span>
-        <select id="builder-route-default-select" class="builder-select"></select>
-      </label>
-      <div class="builder-field-grid builder-route-settings-grid">
-        <label class="builder-field builder-field-full">
-          <span>Route Name</span>
-          <input id="builder-route-name" type="text" maxlength="80" />
-        </label>
-        <label class="builder-field builder-field-inline">
-          <span>Loop route</span>
-          <input id="builder-route-loop" type="checkbox" />
-        </label>
-        <label class="builder-field">
-          <span>Easing</span>
-          <select id="builder-route-easing" class="builder-select">
-            <option value="easeInOutSine">easeInOutSine</option>
-            <option value="linear">linear</option>
-          </select>
-        </label>
-        <label class="builder-field">
-          <span>Timing Mode</span>
-          <select id="builder-route-timing-mode" class="builder-select">
-            <option value="duration">Duration</option>
-            <option value="speed">Speed</option>
-          </select>
-        </label>
-        <label class="builder-field">
-          <span id="builder-route-timing-value-label">Duration (ms)</span>
-          <input id="builder-route-timing-value" type="number" min="0" step="100" />
-        </label>
-        <label class="builder-field">
-          <span>New Point Dwell (ms)</span>
-          <input id="builder-route-dwell-ms" type="number" min="0" step="50" value="0" />
-        </label>
-      </div>
-      <div class="builder-action-row builder-action-row-split">
-        <button id="builder-route-preview" class="ui-button builder-button builder-button-block" type="button">Preview Route</button>
-        <button id="builder-route-stop" class="ui-button builder-button builder-button-block" type="button">Stop Preview</button>
-      </div>
-      <div id="builder-route-points" class="builder-route-points"></div>
-    </div>
-    <label class="builder-textarea-label builder-advanced-tools-label" for="builder-layout-json">Manual JSON (advanced)</label>
-    <textarea id="builder-layout-json" class="builder-textarea builder-advanced-tools-json" spellcheck="false"></textarea>
-  </div>
-`;
-
-const libraryPanelMarkup = `
-  <div class="builder-panel-header">
-    <p class="builder-panel-kicker">Asset Library</p>
-    <h2>Curated assets</h2>
-    <p class="builder-panel-copy">Choose an asset, then place it near the current camera target.</p>
-  </div>
-  <div class="builder-panel-section builder-panel-section-no-border builder-panel-section-tight builder-library-tools">
-    <span class="builder-panel-label">Library Tools</span>
-    <div class="builder-action-row builder-action-row-upload-tools">
-      <button id="builder-upload-asset" class="ui-button builder-button builder-button-block" type="button">Upload Assets (.glb)</button>
-      <button id="builder-remove-upload" class="ui-button builder-button builder-button-block" type="button">Remove selected upload</button>
-      <button id="builder-clear-uploads" class="ui-button builder-button builder-button-block" type="button">Clear uploads</button>
-      <input id="builder-upload-asset-input" type="file" accept=".glb,model/gltf-binary" multiple hidden />
-    </div>
-    <div class="builder-library-upload-controls">
-      <label class="builder-field builder-library-sort-field" for="builder-upload-sort">
-        <span>Sort uploads</span>
-        <select id="builder-upload-sort" class="builder-select">
-          <option value="alpha">A-Z</option>
-          <option value="date-uploaded">Date uploaded</option>
-        </select>
-      </label>
-      <button id="builder-rename-upload-category" class="ui-button builder-button builder-button-block" type="button">Rename category</button>
-    </div>
-  </div>
-  <div class="builder-panel-tabs" role="tablist" aria-label="Builder library tabs">
-    <button id="builder-tab-assets" class="builder-tab is-active" type="button" role="tab" aria-selected="true" aria-controls="builder-assets-panel" data-builder-tab="assets">Assets</button>
-    <button id="builder-tab-scene" class="builder-tab" type="button" role="tab" aria-selected="false" aria-controls="builder-scene-panel" data-builder-tab="scene">Scene Objects</button>
-  </div>
-  <div id="builder-assets-panel" class="builder-tab-panel is-active" role="tabpanel" aria-labelledby="builder-tab-assets">
-    <div class="builder-panel-section builder-panel-section-fill">
-      <div id="builder-palette"></div>
-    </div>
-  </div>
-  <div id="builder-scene-panel" class="builder-tab-panel" role="tabpanel" aria-labelledby="builder-tab-scene" hidden>
-    <div class="builder-panel-section builder-panel-section-fill">
-      <div id="builder-scene-objects" class="builder-scene-object-list"></div>
-    </div>
-  </div>
-`;
-
-const rolloutPanelMarkup = `
-  <div id="builder-rollout-panel" class="builder-rollout-panel">
-    <div id="builder-rollout-content" class="builder-rollout-content"></div>
-  </div>
-`;
-
-const inspectorPanelMarkup = `
-  <div class="builder-panel-header">
-    <p class="builder-panel-kicker">Inspector</p>
-    <h2>Selected object</h2>
-    <p class="builder-panel-copy">Edit the selected object only. World and camera controls are in the top toolbar.</p>
-  </div>
-  <div class="builder-panel-section builder-panel-section-no-border builder-panel-section-tight">
-    <span class="builder-panel-label">Object</span>
-    <div id="builder-selection-summary" class="builder-selection-summary"></div>
-    <div class="builder-panel-subsection">
-      <span class="builder-panel-label">Quick Move</span>
-      <p class="builder-control-note">Use top-bar transform modes (1/2/3) for gizmos, or nudge by 0.25 units here.</p>
-      <div id="builder-move-controls" class="builder-control-grid builder-control-grid-move">
-        <button class="ui-button builder-button builder-control-button" type="button" data-move-axis="z" data-move-delta="-0.25">Z-</button>
-        <button class="ui-button builder-button builder-control-button" type="button" data-move-axis="y" data-move-delta="0.25">Y+</button>
-        <button class="ui-button builder-button builder-control-button" type="button" data-move-axis="x" data-move-delta="-0.25">X-</button>
-        <button class="ui-button builder-button builder-control-button" type="button" data-move-axis="z" data-move-delta="0.25">Z+</button>
-        <button class="ui-button builder-button builder-control-button" type="button" data-move-axis="y" data-move-delta="-0.25">Y-</button>
-        <button class="ui-button builder-button builder-control-button" type="button" data-move-axis="x" data-move-delta="0.25">X+</button>
-      </div>
-    </div>
-    <div class="builder-panel-subsection">
-      <span class="builder-panel-label">Rotation</span>
-      <div id="builder-rotation-controls" class="builder-action-row builder-action-row-split">
-        <button class="ui-button builder-button builder-button-block" type="button" data-rotate-delta="-15">Rotate -15 deg</button>
-        <button class="ui-button builder-button builder-button-block" type="button" data-rotate-delta="15">Rotate +15 deg</button>
-      </div>
-    </div>
-    <div class="builder-field-grid">
-      <label class="builder-field">
-        <span>Position X</span>
-        <input id="builder-pos-x" type="number" step="0.1" />
-      </label>
-      <label class="builder-field">
-        <span>Position Y</span>
-        <input id="builder-pos-y" type="number" step="0.1" />
-      </label>
-      <label class="builder-field">
-        <span>Position Z</span>
-        <input id="builder-pos-z" type="number" step="0.1" />
-      </label>
-      <label class="builder-field">
-        <span>Rotation Y (deg)</span>
-        <input id="builder-rot-y" type="number" step="0.1" />
-      </label>
-      <label class="builder-field builder-field-full">
-        <span>Uniform scale</span>
-        <input id="builder-scale" type="number" step="0.1" min="0.1" />
-      </label>
-    </div>
-    <div class="builder-action-row builder-action-row-split">
-      <button id="builder-duplicate" class="ui-button builder-button builder-button-block" type="button">Duplicate</button>
-      <button id="builder-delete" class="ui-button builder-button builder-button-danger builder-button-block" type="button">Delete</button>
-    </div>
-  </div>
-  <p id="builder-status" class="builder-status"></p>
-`;
 
 const DEFAULT_LIBRARY_WIDTH = 320;
 const MIN_LIBRARY_WIDTH = 240;
@@ -325,145 +120,90 @@ export function createBuilderPanel(
 
   element.append(libraryPanelToggleButton, inspectorPanelToggleButton);
 
-  topBar.innerHTML = topBarMarkup;
-  libraryPanel.innerHTML = libraryPanelMarkup;
-  inspectorPanel.innerHTML = inspectorPanelMarkup;
-  
-  // Create and insert rollout panel after library panel
-  const rolloutContainer = document.createElement("div");
-  rolloutContainer.innerHTML = rolloutPanelMarkup;
-  const rolloutPanel = rolloutContainer.firstElementChild as HTMLElement;
-  libraryPanel.parentElement?.insertBefore(rolloutPanel, libraryPanel.nextSibling);
-  
-  element.hidden = false;
+  topBar.innerHTML = toolbarMarkup;
+  libraryPanel.innerHTML = leftPanelMarkup;
+  inspectorPanel.innerHTML = rightPanelMarkup;
 
-  const rolloutContentElement = rolloutPanel.querySelector<HTMLElement>("#builder-rollout-content");
-  const assetsTabButton = libraryPanel.querySelector<HTMLButtonElement>("#builder-tab-assets");
-  const sceneTabButton = libraryPanel.querySelector<HTMLButtonElement>("#builder-tab-scene");
-  const assetsTabPanel = libraryPanel.querySelector<HTMLElement>("#builder-assets-panel");
-  const sceneTabPanel = libraryPanel.querySelector<HTMLElement>("#builder-scene-panel");
-  const uploadAssetInput = libraryPanel.querySelector<HTMLInputElement>("#builder-upload-asset-input");
-  const uploadAssetButton = libraryPanel.querySelector<HTMLButtonElement>("#builder-upload-asset");
-  const removeUploadButton = libraryPanel.querySelector<HTMLButtonElement>("#builder-remove-upload");
-  const clearUploadsButton = libraryPanel.querySelector<HTMLButtonElement>("#builder-clear-uploads");
-  const uploadSortSelect = libraryPanel.querySelector<HTMLSelectElement>("#builder-upload-sort");
-  const renameCategoryButton = libraryPanel.querySelector<HTMLButtonElement>("#builder-rename-upload-category");
-  const cameraNavToggleButton = topBar.querySelector<HTMLButtonElement>("#builder-camera-nav-toggle");
-  const transformModeButtons = Array.from(
-    topBar.querySelectorAll<HTMLButtonElement>("[data-transform-mode]")
-  );
-  const advancedToolsToggleButton = topBar.querySelector<HTMLButtonElement>("#builder-advanced-tools-toggle");
-  const advancedToolsPanel = topBar.querySelector<HTMLElement>("#builder-advanced-tools-panel");
-  const advancedToolsCloseButton = topBar.querySelector<HTMLButtonElement>("#builder-advanced-tools-close");
-  const paletteElement = libraryPanel.querySelector<HTMLElement>("#builder-palette");
-  const sceneObjectsElement = libraryPanel.querySelector<HTMLElement>("#builder-scene-objects");
-  const selectionSummaryElement = inspectorPanel.querySelector<HTMLElement>("#builder-selection-summary");
-  const statusElement = inspectorPanel.querySelector<HTMLElement>("#builder-status");
-  const worldStatusElement = topBar.querySelector<HTMLElement>("#builder-world-status");
-  const worldNameInput = topBar.querySelector<HTMLInputElement>("#builder-world-name");
-  const layoutTextarea = topBar.querySelector<HTMLTextAreaElement>("#builder-layout-json");
-  const duplicateButton = inspectorPanel.querySelector<HTMLButtonElement>("#builder-duplicate");
-  const deleteButton = inspectorPanel.querySelector<HTMLButtonElement>("#builder-delete");
-  const exportButton = topBar.querySelector<HTMLButtonElement>("#builder-export");
-  const importButton = topBar.querySelector<HTMLButtonElement>("#builder-import");
-  const downloadWorldPackageButton = topBar.querySelector<HTMLButtonElement>("#builder-download-world-package");
-  const uploadWorldPackageButton = topBar.querySelector<HTMLButtonElement>("#builder-upload-world-package");
-  const uploadWorldPackageInput = topBar.querySelector<HTMLInputElement>("#builder-upload-world-package-input");
-  const downloadWorldJsonButton = topBar.querySelector<HTMLButtonElement>("#builder-download-world-json");
-  const uploadWorldJsonButton = topBar.querySelector<HTMLButtonElement>("#builder-upload-world-json");
-  const uploadWorldJsonInput = topBar.querySelector<HTMLInputElement>("#builder-upload-world-json-input");
-  const routeModeToggleButton = topBar.querySelector<HTMLButtonElement>("#builder-route-mode-toggle");
-  const routeCreateButton = topBar.querySelector<HTMLButtonElement>("#builder-route-create");
-  const routeAddPointButton = topBar.querySelector<HTMLButtonElement>("#builder-route-add-point");
-  const routeDeleteButton = topBar.querySelector<HTMLButtonElement>("#builder-route-delete");
-  const routeSelect = topBar.querySelector<HTMLSelectElement>("#builder-route-select");
-  const routeDefaultSelect = topBar.querySelector<HTMLSelectElement>("#builder-route-default-select");
-  const routeNameInput = topBar.querySelector<HTMLInputElement>("#builder-route-name");
-  const routeLoopInput = topBar.querySelector<HTMLInputElement>("#builder-route-loop");
-  const routeEasingSelect = topBar.querySelector<HTMLSelectElement>("#builder-route-easing");
-  const routeTimingModeSelect = topBar.querySelector<HTMLSelectElement>("#builder-route-timing-mode");
-  const routeTimingValueLabel = topBar.querySelector<HTMLElement>("#builder-route-timing-value-label");
-  const routeTimingValueInput = topBar.querySelector<HTMLInputElement>("#builder-route-timing-value");
-  const routeDwellInput = topBar.querySelector<HTMLInputElement>("#builder-route-dwell-ms");
-  const routePreviewButton = topBar.querySelector<HTMLButtonElement>("#builder-route-preview");
-  const routeStopButton = topBar.querySelector<HTMLButtonElement>("#builder-route-stop");
-  const routePointsElement = topBar.querySelector<HTMLElement>("#builder-route-points");
-  const saveWorldButton = topBar.querySelector<HTMLButtonElement>("#builder-save-world");
-  const saveWorldAsButton = topBar.querySelector<HTMLButtonElement>("#builder-save-world-as");
-  const viewWorldButton = topBar.querySelector<HTMLButtonElement>("#builder-view-world");
-  const backToMenuButton = topBar.querySelector<HTMLButtonElement>("#builder-back-to-menu");
-  const posXInput = inspectorPanel.querySelector<HTMLInputElement>("#builder-pos-x");
-  const posYInput = inspectorPanel.querySelector<HTMLInputElement>("#builder-pos-y");
-  const posZInput = inspectorPanel.querySelector<HTMLInputElement>("#builder-pos-z");
-  const rotYInput = inspectorPanel.querySelector<HTMLInputElement>("#builder-rot-y");
-  const scaleInput = inspectorPanel.querySelector<HTMLInputElement>("#builder-scale");
-  const moveControlsElement = inspectorPanel.querySelector<HTMLElement>("#builder-move-controls");
-  const rotationControlsElement = inspectorPanel.querySelector<HTMLElement>("#builder-rotation-controls");
+  const leftRollout = createLeftRolloutPanel(libraryPanel);
+  const leftElements = getBuilderLeftPanelElements(libraryPanel);
+  const rightElements = getBuilderRightPanelElements(inspectorPanel);
+  const toolbarElements = getBuilderToolbarElements(topBar);
 
-  if (
-    !rolloutContentElement ||
-    !assetsTabButton ||
-    !sceneTabButton ||
-    !assetsTabPanel ||
-    !sceneTabPanel ||
-    !uploadAssetInput ||
-    !uploadAssetButton ||
-    !removeUploadButton ||
-    !clearUploadsButton ||
-    !uploadSortSelect ||
-    !renameCategoryButton ||
-    !cameraNavToggleButton ||
-    transformModeButtons.length !== 3 ||
-    !advancedToolsToggleButton ||
-    !advancedToolsPanel ||
-    !advancedToolsCloseButton ||
-    !paletteElement ||
-    !sceneObjectsElement ||
-    !selectionSummaryElement ||
-    !statusElement ||
-    !worldStatusElement ||
-    !worldNameInput ||
-    !layoutTextarea ||
-    !duplicateButton ||
-    !deleteButton ||
-    !exportButton ||
-    !importButton ||
-    !downloadWorldPackageButton ||
-    !uploadWorldPackageButton ||
-    !uploadWorldPackageInput ||
-    !downloadWorldJsonButton ||
-    !uploadWorldJsonButton ||
-    !uploadWorldJsonInput ||
-    !routeModeToggleButton ||
-    !routeCreateButton ||
-    !routeAddPointButton ||
-    !routeDeleteButton ||
-    !routeSelect ||
-    !routeDefaultSelect ||
-    !routeNameInput ||
-    !routeLoopInput ||
-    !routeEasingSelect ||
-    !routeTimingModeSelect ||
-    !routeTimingValueLabel ||
-    !routeTimingValueInput ||
-    !routeDwellInput ||
-    !routePreviewButton ||
-    !routeStopButton ||
-    !routePointsElement ||
-    !saveWorldButton ||
-    !saveWorldAsButton ||
-    !viewWorldButton ||
-    !backToMenuButton ||
-    !posXInput ||
-    !posYInput ||
-    !posZInput ||
-    !rotYInput ||
-    !scaleInput ||
-    !moveControlsElement ||
-    !rotationControlsElement
-  ) {
-    throw new Error("Builder panel could not find the required DOM elements.");
+  if (!leftRollout || !leftElements || !rightElements || !toolbarElements) {
+    throw new Error("Builder panel could not find the required panel modules.");
   }
+
+  const { rolloutPanel, rolloutContentElement } = leftRollout;
+  const {
+    assetsTabButton,
+    sceneTabButton,
+    assetsTabPanel,
+    sceneTabPanel,
+    uploadAssetInput,
+    uploadAssetButton,
+    removeUploadButton,
+    clearUploadsButton,
+    uploadSortSelect,
+    renameCategoryButton,
+    paletteElement,
+    sceneObjectsElement
+  } = leftElements;
+  const {
+    selectionSummaryElement,
+    statusElement,
+    duplicateButton,
+    deleteButton,
+    posXInput,
+    posYInput,
+    posZInput,
+    rotYInput,
+    scaleInput,
+    moveControlsElement,
+    rotationControlsElement
+  } = rightElements;
+  const {
+    toolbarUploadAssetButton,
+    undoButton,
+    redoButton,
+    cameraNavToggleButton,
+    transformModeButtons,
+    advancedToolsToggleButton,
+    advancedToolsPanel,
+    advancedToolsCloseButton,
+    worldStatusElement,
+    worldNameInput,
+    layoutTextarea,
+    exportButton,
+    importButton,
+    downloadWorldPackageButton,
+    uploadWorldPackageButton,
+    uploadWorldPackageInput,
+    downloadWorldJsonButton,
+    uploadWorldJsonButton,
+    uploadWorldJsonInput,
+    routeModeToggleButton,
+    routeCreateButton,
+    routeAddPointButton,
+    routeDeleteButton,
+    routeSelect,
+    routeDefaultSelect,
+    routeNameInput,
+    routeLoopInput,
+    routeEasingSelect,
+    routeTimingModeSelect,
+    routeTimingValueLabel,
+    routeTimingValueInput,
+    routeDwellInput,
+    routePreviewButton,
+    routeStopButton,
+    routePointsElement,
+    saveWorldButton,
+    saveWorldAsButton,
+    viewWorldButton,
+    backToMenuButton
+  } = toolbarElements;
+
+  element.hidden = false;
 
   let selectedAssetId: AssetId | null = null;
   let toastTimer: number | null = null;
@@ -1225,6 +965,18 @@ export function createBuilderPanel(
 
   uploadAssetButton.addEventListener("click", () => {
     uploadAssetInput.click();
+  });
+
+  toolbarUploadAssetButton.addEventListener("click", () => {
+    uploadAssetInput.click();
+  });
+
+  undoButton.addEventListener("click", () => {
+    void sceneBuilder.undo();
+  });
+
+  redoButton.addEventListener("click", () => {
+    void sceneBuilder.redo();
   });
 
   uploadSortSelect.addEventListener("change", () => {

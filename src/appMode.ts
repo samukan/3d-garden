@@ -1,13 +1,15 @@
 export type AppMode = "menu" | "builder" | "viewer";
+export type BuilderShellMode = "v1" | "v2";
 
 export interface AppRoute {
   mode: AppMode;
+  builderShell: BuilderShellMode;
   notice: string | null;
   worldId: string | null;
   worldJsonId: string | null;
 }
 
-const persistentQueryKeys = ["debugBrowserLogs", "renderer"] as const;
+const persistentQueryKeys = ["builderShell", "debugBrowserLogs", "renderer"] as const;
 
 function parseAppMode(mode: string | undefined): AppMode | null {
   if (mode === "menu" || mode === "builder" || mode === "viewer") {
@@ -32,15 +34,26 @@ function sanitizeWorldJsonId(worldJsonId: string | undefined): string | null {
   return trimmed ? trimmed : null;
 }
 
+function parseBuilderShellMode(shell: string | undefined): BuilderShellMode | null {
+  if (shell === "v1" || shell === "v2") {
+    return shell;
+  }
+
+  return null;
+}
+
 function resolveAppRoute(): AppRoute {
   if (typeof window !== "undefined") {
     const searchParams = new URLSearchParams(window.location.search);
     const appModeParam = searchParams.get("appMode") ?? undefined;
+    const builderShellParam = searchParams.get("builderShell") ?? undefined;
     const queryMode = parseAppMode(appModeParam);
+    const queryBuilderShell = parseBuilderShellMode(builderShellParam);
 
     if (queryMode) {
       return {
         mode: queryMode,
+        builderShell: queryBuilderShell ?? parseBuilderShellMode(import.meta.env.VITE_BUILDER_SHELL) ?? "v1",
         notice: sanitizeNotice(searchParams.get("notice") ?? undefined),
         worldId: sanitizeWorldId(searchParams.get("worldId") ?? undefined),
         worldJsonId: sanitizeWorldJsonId(searchParams.get("worldJsonId") ?? undefined)
@@ -50,6 +63,7 @@ function resolveAppRoute(): AppRoute {
 
   return {
     mode: parseAppMode(import.meta.env.VITE_APP_MODE) ?? "menu",
+    builderShell: parseBuilderShellMode(import.meta.env.VITE_BUILDER_SHELL) ?? "v1",
     notice: null,
     worldId: null,
     worldJsonId: null
@@ -61,6 +75,7 @@ export const activeAppMode = activeAppRoute.mode;
 
 export function buildAppHref(route: {
   mode: AppMode;
+  builderShell?: BuilderShellMode;
   notice?: string | null;
   worldId?: string | null;
   worldJsonId?: string | null;
@@ -79,6 +94,10 @@ export function buildAppHref(route: {
 
   params.set("appMode", route.mode);
 
+  if (route.builderShell) {
+    params.set("builderShell", route.builderShell);
+  }
+
   if (route.worldId) {
     params.set("worldId", route.worldId);
   } else if (route.worldJsonId) {
@@ -95,6 +114,7 @@ export function buildAppHref(route: {
 
 export function navigateToRoute(route: {
   mode: AppMode;
+  builderShell?: BuilderShellMode;
   notice?: string | null;
   worldId?: string | null;
   worldJsonId?: string | null;

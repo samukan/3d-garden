@@ -122,6 +122,14 @@ Optional headed run:
 npm run debug:browser:headed
 ```
 
+## Builder Shell Feature Flag (Phase 1)
+
+An experimental builder shell scaffold is available behind a query flag:
+
+- `?appMode=builder&builderShell=v2`
+
+This keeps existing scene logic intact while enabling the new top/left/center/right editor shell layout scaffolding.
+
 ## Presentation World Files
 
 The current presented world file in repo root is:
