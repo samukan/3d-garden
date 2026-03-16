@@ -1051,6 +1051,7 @@ export function BuilderShellApp({ adapter, hosts }: BuilderShellAppProps) {
           </p>
           <div className="builder-action-row builder-action-row-split">
             <button
+              id="builder-v2-route-create"
               className="ui-button builder-button builder-button-block"
               type="button"
               disabled={!routeModeEnabled}
@@ -1064,6 +1065,7 @@ export function BuilderShellApp({ adapter, hosts }: BuilderShellAppProps) {
           <label className="builder-field">
             <span>Selected Route</span>
             <select
+              id="builder-v2-route-select"
               className="builder-select"
               value={routeEditState.selectedRouteId ?? ""}
               disabled={!routeModeEnabled || !hasRoutes}
@@ -1082,6 +1084,7 @@ export function BuilderShellApp({ adapter, hosts }: BuilderShellAppProps) {
           <label className="builder-field">
             <span>Default Route</span>
             <select
+              id="builder-v2-route-default-select"
               className="builder-select"
               value={routeEditState.defaultRouteId ?? ""}
               disabled={!routeModeEnabled || !hasRoutes}
@@ -1099,6 +1102,7 @@ export function BuilderShellApp({ adapter, hosts }: BuilderShellAppProps) {
           <label className="builder-field">
             <span>Route Name</span>
             <input
+              id="builder-v2-route-name"
               type="text"
               maxLength={80}
               value={routeNameDraft}
@@ -1207,6 +1211,7 @@ export function BuilderShellApp({ adapter, hosts }: BuilderShellAppProps) {
           </label>
           <div className="builder-action-row builder-action-row-split">
             <button
+              id="builder-v2-route-add-point"
               className="ui-button builder-button builder-button-block"
               type="button"
               disabled={!routeModeEnabled || !selectedRoute}
@@ -1231,6 +1236,7 @@ export function BuilderShellApp({ adapter, hosts }: BuilderShellAppProps) {
           </div>
           <div className="builder-action-row builder-action-row-split">
             <button
+              id="builder-v2-route-delete"
               className="ui-button builder-button builder-button-danger builder-button-block"
               type="button"
               disabled={!routeModeEnabled || !selectedRoute}
@@ -1633,12 +1639,12 @@ export function BuilderShellApp({ adapter, hosts }: BuilderShellAppProps) {
 
   const routeDeleteModal = pendingRouteDelete ? (
     <div className="builder-shell-modal-backdrop" role="presentation">
-      <div className="builder-shell-modal" role="dialog" aria-modal="true" aria-labelledby="builder-delete-route-modal-title">
+      <div id="builder-v2-route-delete-modal" className="builder-shell-modal" role="dialog" aria-modal="true" aria-labelledby="builder-delete-route-modal-title">
         <p id="builder-delete-route-modal-title" className="builder-shell-modal-title">Delete Route</p>
         <p className="builder-shell-modal-copy">Delete route "{pendingRouteDelete.routeName}"?</p>
         <div className="builder-shell-modal-actions">
-          <button className="ui-button builder-button" type="button" onClick={cancelRouteDelete}>Cancel</button>
-          <button className="ui-button builder-button builder-button-danger" type="button" onClick={confirmRouteDelete}>Delete</button>
+          <button id="builder-v2-route-delete-cancel" className="ui-button builder-button" type="button" onClick={cancelRouteDelete}>Cancel</button>
+          <button id="builder-v2-route-delete-confirm" className="ui-button builder-button builder-button-danger" type="button" onClick={confirmRouteDelete}>Delete</button>
         </div>
       </div>
     </div>
