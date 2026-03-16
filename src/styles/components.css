@@ -1343,6 +1343,10 @@
   right: 8px;
 }
 
+#app[data-app-mode="builder"][data-builder-shell="v2"] .builder-v2-dock-toggle.is-hidden-for-overflow-menu {
+  display: none;
+}
+
 #app[data-app-mode="builder"][data-builder-shell="v2"] .builder-v2-dock-resize {
   position: absolute;
   top: 2.6rem;

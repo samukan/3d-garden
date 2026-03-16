@@ -52,6 +52,8 @@ interface BuilderShellActions {
   saveWorldAs: () => void;
   viewWorld: () => void;
   backToMenu: () => void;
+  downloadWorldJson: () => void;
+  downloadWorldPackage: () => Promise<void>;
   setTransformMode: (mode: "move" | "rotate" | "scale") => void;
   toggleCameraNavigation: () => void;
   toggleRouteMode: () => void;
@@ -112,6 +114,39 @@ const DEFAULT_DOCK_LAYOUT_STATE: BuilderDockLayoutState = {
   activeInspectorTab: "object",
   density: "comfortable"
 };
+
+function slugifyWorldName(value: string): string {
+  const normalized = value
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+
+  return normalized || "untitled-world";
+}
+
+function createWorldJsonDownloadFileName(worldName: string): string {
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+  return `skill-garden-${slugifyWorldName(worldName)}-${stamp}.json`;
+}
+
+function triggerBlobDownload(blob: Blob, fileName: string): void {
+  if (typeof document === "undefined" || typeof URL === "undefined") {
+    throw new Error("File downloads are only available in the browser.");
+  }
+
+  const objectUrl = URL.createObjectURL(blob);
+  try {
+    const link = document.createElement("a");
+    link.href = objectUrl;
+    link.download = fileName;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+  } finally {
+    URL.revokeObjectURL(objectUrl);
+  }
+}
 
 function clampDockWidth(side: BuilderDockSide, width: number): number {
   const maxWidth = side === "left" ? MAX_LEFT_DOCK_WIDTH_PX : MAX_RIGHT_DOCK_WIDTH_PX;
@@ -378,6 +413,48 @@ export function createBuilderShellStore(adapter: SceneBuilderAdapter) {
     },
     backToMenu: () => {
       adapter.backToMenu();
+    },
+    downloadWorldJson: () => {
+      try {
+        const { worldNameDraft, worldState } = get();
+        const layoutJson = adapter.exportLayout();
+        const fileName = createWorldJsonDownloadFileName(
+          worldNameDraft.trim() || worldState.currentWorldName || "untitled-world"
+        );
+
+        triggerBlobDownload(new Blob([layoutJson], { type: "application/json" }), fileName);
+
+        const includesUploadedAssets = layoutJson.includes("\"assetId\": \"local-uploaded:");
+        const portabilityNote = includesUploadedAssets
+          ? " JSON format is layout-only and will not include uploaded asset binaries."
+          : "";
+        set({
+          statusNotice: `Downloaded ${fileName}.${portabilityNote}`
+        });
+      } catch (error) {
+        set({
+          statusNotice: error instanceof Error ? error.message : "World JSON export failed."
+        });
+      }
+    },
+    downloadWorldPackage: async () => {
+      try {
+        const { worldNameDraft, worldState } = get();
+        const targetWorldName = worldNameDraft.trim() || worldState.currentWorldName || "untitled-world";
+        const result = await adapter.exportWorldPackage(targetWorldName);
+        triggerBlobDownload(result.blob, result.fileName);
+
+        const uploadSuffix = result.uploadedAssetCount
+          ? ` Included ${result.uploadedAssetCount} uploaded asset${result.uploadedAssetCount === 1 ? "" : "s"}.`
+          : "";
+        set({
+          statusNotice: `Downloaded ${result.fileName}.${uploadSuffix}`
+        });
+      } catch (error) {
+        set({
+          statusNotice: error instanceof Error ? error.message : "World package export failed."
+        });
+      }
     },
     setTransformMode: (mode) => {
       adapter.setTransformMode(mode);

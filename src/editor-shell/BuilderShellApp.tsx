@@ -748,6 +748,14 @@ export function BuilderShellApp({ adapter, hosts }: BuilderShellAppProps) {
         </button>
         {toolbarOverflowOpen ? (
           <div className="builder-toolbar-overflow-menu" role="menu" aria-label="Builder tools">
+            <button id="builder-toolbar-download-world-package" className="ui-button builder-button builder-button-block" type="button" onClick={() => {
+              setToolbarOverflowOpen(false);
+              void store.getState().downloadWorldPackage();
+            }}>Download .sgw</button>
+            <button id="builder-toolbar-download-world-json" className="ui-button builder-button builder-button-block" type="button" onClick={() => {
+              setToolbarOverflowOpen(false);
+              store.getState().downloadWorldJson();
+            }}>Download .json</button>
             <button id="builder-toolbar-upload-asset" className="ui-button builder-button builder-button-block" type="button" onClick={() => {
               setToolbarOverflowOpen(false);
               handleUploadClick();
@@ -1590,7 +1598,7 @@ export function BuilderShellApp({ adapter, hosts }: BuilderShellAppProps) {
         {dockLayout.leftCollapsed ? "Show Library" : "Hide Library"}
       </button>
       <button
-        className={`ui-button builder-button builder-v2-dock-toggle builder-v2-dock-toggle-right${dockLayout.rightCollapsed ? " is-collapsed" : ""}`}
+        className={`ui-button builder-button builder-v2-dock-toggle builder-v2-dock-toggle-right${dockLayout.rightCollapsed ? " is-collapsed" : ""}${toolbarOverflowOpen ? " is-hidden-for-overflow-menu" : ""}`}
         type="button"
         aria-expanded={!dockLayout.rightCollapsed}
         aria-controls="builder-inspector-panel"

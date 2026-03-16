@@ -14,6 +14,13 @@ import type {
 import type { BuilderVector3 } from "../builder/builderTypes";
 import type { BuilderPanelWorldState, CreateBuilderPanelOptions } from "../ui/builderPanel";
 
+export interface SceneBuilderWorldPackageExport {
+  fileName: string;
+  blob: Blob;
+  objectCount: number;
+  uploadedAssetCount: number;
+}
+
 export interface SceneBuilderAdapter {
   getSnapshot: () => BuilderSceneSnapshot;
   getTransformMode: () => BuilderTransformMode;
@@ -26,6 +33,8 @@ export interface SceneBuilderAdapter {
   saveWorldAs: (worldName: string) => void;
   viewWorld: () => void;
   backToMenu: () => void;
+  exportLayout: () => string;
+  exportWorldPackage: (worldName: string) => Promise<SceneBuilderWorldPackageExport>;
   setTransformMode: (mode: BuilderTransformMode) => void;
   setCameraNavigationEnabled: (enabled: boolean) => void;
   setRouteModeEnabled: (enabled: boolean) => void;
@@ -109,6 +118,8 @@ export function createSceneBuilderAdapter(
     backToMenu: () => {
       options.onBackToMenu();
     },
+    exportLayout: () => sceneBuilder.exportLayout(),
+    exportWorldPackage: (worldName) => sceneBuilder.exportWorldPackage(worldName),
     setTransformMode: (mode) => {
       sceneBuilder.setTransformMode(mode);
     },
