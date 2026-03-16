@@ -142,6 +142,43 @@
   color: var(--color-text-primary);
 }
 
+.menu-shell-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: rgba(7, 11, 18, 0.56);
+  z-index: calc(var(--z-overlay) + 2);
+}
+
+.menu-shell-modal {
+  width: min(28rem, 94vw);
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-panel);
+  background: var(--color-surface-1);
+  box-shadow: var(--shadow-panel);
+}
+
+.menu-shell-modal-title {
+  margin: 0;
+  font-size: var(--font-size-18);
+  color: var(--color-text-primary);
+}
+
+.menu-shell-modal-copy {
+  margin: 0;
+  color: var(--color-text-secondary);
+}
+
+.menu-shell-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+
 .ui-button,
 .menu-secondary-button,
 .builder-button,

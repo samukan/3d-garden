@@ -20,7 +20,7 @@ import {
 import { saveViewerDraft } from "./storage/viewerDraftStore";
 import { browserDebugError, logBrowserDebug } from "./utils/browserDebug";
 import { bootstrapViewerMode } from "./viewer/bootstrapViewerMode";
-import { importWorldPackageFile } from "./world-package/worldPackageIO";
+import { importWorldPackageFile, isWorldPackageFileName } from "./world-package/worldPackageIO";
 
 const EMPTY_LAYOUT_JSON = serializeBuilderLayout([]);
 
@@ -131,6 +131,55 @@ async function bootstrap(): Promise<void> {
       },
       onViewWorld: (worldId) => {
         navigateToRoute({ mode: "viewer", worldId });
+      },
+      onImportWorldInBuilder: async (file) => {
+        const fileName = file.name.trim() || "Imported World";
+        try {
+          if (isWorldPackageFileName(fileName)) {
+            const importedWorldPackage = await importWorldPackageFile(file);
+            const nextName = importedWorldPackage.worldName.trim() || fileName.replace(/\.sgw$/i, "").trim() || "Imported World";
+            const savedRecord = saveSavedWorld({
+              layout: importedWorldPackage.layoutJson,
+              name: nextName
+            });
+
+            navigateToRoute({
+              mode: "builder",
+              builderShell: "v2",
+              worldId: savedRecord.id,
+              notice: `Imported ${savedRecord.name}.`
+            });
+            return { success: true };
+          }
+
+          const content = await file.text();
+          const parsedLayout = parseBuilderLayoutDocument(content);
+          if (!parsedLayout.success) {
+            return {
+              success: false,
+              error: `${fileName} could not be imported: ${parsedLayout.error}`
+            };
+          }
+
+          const nextName = fileName.replace(/\.json$/i, "").trim() || "Imported World";
+          const savedRecord = saveSavedWorld({
+            layout: content,
+            name: nextName
+          });
+
+          navigateToRoute({
+            mode: "builder",
+            builderShell: "v2",
+            worldId: savedRecord.id,
+            notice: `Imported ${savedRecord.name}.`
+          });
+          return { success: true };
+        } catch (error) {
+          return {
+            success: false,
+            error: error instanceof Error ? `${fileName} could not be imported: ${error.message}` : `${fileName} could not be imported.`
+          };
+        }
       },
       onOpenWorldJsonInViewer: async ({ fileName, content }) => {
         const parsedLayout = parseBuilderLayoutDocument(content);
