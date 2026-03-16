@@ -306,7 +306,7 @@ test("v2 shell allows selecting an asset and adding it to scene", async ({ page,
   });
 
   await expect(page.locator("#builder-workspace")).toBeVisible();
-  await expect(page.locator("#builder-toolbar-upload-asset")).toBeVisible();
+  await expect(page.locator("#builder-toolbar-overflow-toggle")).toBeVisible();
   await expect(page.locator("#builder-status")).toContainText("Builder ready", {
     timeout: 20_000
   });
