@@ -108,6 +108,9 @@ async function bootstrap(): Promise<void> {
       onBuildNew: () => {
         navigateToRoute({ mode: "builder" });
       },
+      onBuildNewV2: () => {
+        navigateToRoute({ mode: "builder", builderShell: "v2" });
+      },
       onDeleteWorld: (worldId) => {
         const world = getSavedWorld(worldId);
         if (!world) {

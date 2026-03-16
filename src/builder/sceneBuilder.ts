@@ -99,6 +99,8 @@ export interface SceneBuilderController {
   deleteRoute: (routeId: string) => boolean;
   setDefaultRoute: (routeId: string | null) => void;
   addPointFromCurrentCamera: (dwellMs?: number) => boolean;
+  updateSelectedRoutePointFromCurrentCamera: () => boolean;
+  updateSelectedRoutePointDwellMs: (dwellMs: number) => boolean;
   selectRoutePoint: (pointIndex: number | null) => void;
   removePoint: (pointIndex: number) => boolean;
   movePoint: (pointIndex: number, direction: BuilderRoutePointMoveDirection) => boolean;
@@ -2229,6 +2231,51 @@ export async function createSceneBuilder({
     "Captured camera route point."
   );
 
+  const updateSelectedRoutePointFromCurrentCamera = (): boolean => applyRouteMetadataChange(
+    () => {
+      const route = getSelectedRouteMetadata();
+      if (!route || selectedRoutePointIndex === null) {
+        return false;
+      }
+
+      const point = route.points[selectedRoutePointIndex];
+      if (!point) {
+        return false;
+      }
+
+      const cameraPosition = developmentCamera.camera.position;
+      const cameraTarget = developmentCamera.camera.getTarget();
+      point.position = toRouteVector(cameraPosition);
+      point.lookAt = toRouteVector(cameraTarget);
+      return true;
+    },
+    "Updated selected camera route point from current camera."
+  );
+
+  const updateSelectedRoutePointDwellMs = (dwellMs: number): boolean => applyRouteMetadataChange(
+    () => {
+      const route = getSelectedRouteMetadata();
+      if (!route || selectedRoutePointIndex === null) {
+        return false;
+      }
+
+      const point = route.points[selectedRoutePointIndex];
+      if (!point) {
+        return false;
+      }
+
+      const nextDwellMs = Math.max(0, Math.round(Number.isFinite(dwellMs) ? dwellMs : 0));
+      const currentDwellMs = Math.max(0, Math.round(point.dwellMs ?? 0));
+      if (currentDwellMs === nextDwellMs) {
+        return false;
+      }
+
+      point.dwellMs = nextDwellMs;
+      return true;
+    },
+    "Updated selected camera route point dwell."
+  );
+
   const removePoint = (pointIndex: number): boolean => applyRouteMetadataChange(
     () => {
       const route = getSelectedRouteMetadata();
@@ -3175,6 +3222,8 @@ export async function createSceneBuilder({
     deleteRoute,
     setDefaultRoute,
     addPointFromCurrentCamera,
+    updateSelectedRoutePointFromCurrentCamera,
+    updateSelectedRoutePointDwellMs,
     selectRoutePoint,
     removePoint,
     movePoint,

@@ -1,4 +1,9 @@
-import type { BuilderSceneSnapshot } from "../builder/builderTypes";
+import type {
+  BuilderRouteEditState,
+  BuilderRoutePointMoveDirection,
+  BuilderRouteSettingsPatch,
+  BuilderSceneSnapshot
+} from "../builder/builderTypes";
 import type {
   BuilderScreenRect,
   BuilderSelectionMergeMode,
@@ -13,6 +18,7 @@ export interface SceneBuilderAdapter {
   getSnapshot: () => BuilderSceneSnapshot;
   getTransformMode: () => BuilderTransformMode;
   isCameraNavigationEnabled: () => boolean;
+  getRouteEditState: () => BuilderRouteEditState;
   subscribe: (listener: () => void) => () => void;
   getWorldState: () => BuilderPanelWorldState;
   setWorldState: (state: BuilderPanelWorldState) => void;
@@ -22,6 +28,20 @@ export interface SceneBuilderAdapter {
   backToMenu: () => void;
   setTransformMode: (mode: BuilderTransformMode) => void;
   setCameraNavigationEnabled: (enabled: boolean) => void;
+  setRouteModeEnabled: (enabled: boolean) => void;
+  createRoute: (name?: string) => string | null;
+  selectRoute: (routeId: string | null) => void;
+  deleteRoute: (routeId: string) => boolean;
+  setDefaultRoute: (routeId: string | null) => void;
+  addPointFromCurrentCamera: (dwellMs?: number) => boolean;
+  updateSelectedRoutePointFromCurrentCamera: () => boolean;
+  updateSelectedRoutePointDwellMs: (dwellMs: number) => boolean;
+  previewSelectedRoute: () => boolean;
+  stopRoutePreview: (options?: { resetToStart?: boolean }) => void;
+  updateRouteSettings: (patch: BuilderRouteSettingsPatch) => boolean;
+  selectRoutePoint: (pointIndex: number | null) => void;
+  removeRoutePoint: (pointIndex: number) => boolean;
+  moveRoutePoint: (pointIndex: number, direction: BuilderRoutePointMoveDirection) => boolean;
   placeAsset: (assetId: string) => Promise<void>;
   canStartMarqueeSelectionAt: (clientX: number, clientY: number) => boolean;
   applyMarqueeSelection: (rect: BuilderScreenRect, mode: BuilderSelectionMergeMode) => void;
@@ -65,6 +85,7 @@ export function createSceneBuilderAdapter(
     getSnapshot: () => sceneBuilder.getSnapshot(),
     getTransformMode: () => sceneBuilder.getTransformMode(),
     isCameraNavigationEnabled: () => sceneBuilder.isCameraNavigationEnabled(),
+    getRouteEditState: () => sceneBuilder.getRouteEditState(),
     subscribe: (listener) => {
       listeners.add(listener);
       return () => {
@@ -94,6 +115,30 @@ export function createSceneBuilderAdapter(
     setCameraNavigationEnabled: (enabled) => {
       sceneBuilder.setCameraNavigationEnabled(enabled);
     },
+    setRouteModeEnabled: (enabled) => {
+      sceneBuilder.setRouteModeEnabled(enabled);
+    },
+    createRoute: (name) => sceneBuilder.createRoute(name),
+    selectRoute: (routeId) => {
+      sceneBuilder.selectRoute(routeId);
+    },
+    deleteRoute: (routeId) => sceneBuilder.deleteRoute(routeId),
+    setDefaultRoute: (routeId) => {
+      sceneBuilder.setDefaultRoute(routeId);
+    },
+    addPointFromCurrentCamera: (dwellMs) => sceneBuilder.addPointFromCurrentCamera(dwellMs),
+    updateSelectedRoutePointFromCurrentCamera: () => sceneBuilder.updateSelectedRoutePointFromCurrentCamera(),
+    updateSelectedRoutePointDwellMs: (dwellMs) => sceneBuilder.updateSelectedRoutePointDwellMs(dwellMs),
+    previewSelectedRoute: () => sceneBuilder.previewSelectedRoute(),
+    stopRoutePreview: (options) => {
+      sceneBuilder.stopRoutePreview(options);
+    },
+    updateRouteSettings: (patch) => sceneBuilder.updateRouteSettings(patch),
+    selectRoutePoint: (pointIndex) => {
+      sceneBuilder.selectRoutePoint(pointIndex);
+    },
+    removeRoutePoint: (pointIndex) => sceneBuilder.removePoint(pointIndex),
+    moveRoutePoint: (pointIndex, direction) => sceneBuilder.movePoint(pointIndex, direction),
     placeAsset: async (assetId) => {
       await sceneBuilder.placeAsset(assetId);
     },

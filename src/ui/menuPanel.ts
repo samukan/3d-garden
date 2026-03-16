@@ -13,6 +13,7 @@ export interface MenuPanelState {
 
 export interface CreateMenuPanelOptions {
   onBuildNew: () => void;
+  onBuildNewV2: () => void;
   onDeleteWorld: (worldId: string) => void;
   onEditWorld: (worldId: string) => void;
   onOpenWorldPackageInViewer: (file: File) => Promise<{ success: boolean; error?: string }>;
@@ -90,6 +91,7 @@ export function createMenuPanel(element: HTMLElement, options: CreateMenuPanelOp
           <p class="menu-panel-copy">Saved worlds are the main experience here. Use the builder when you want to start something fresh.</p>
           <div class="menu-primary-actions">
             <button id="menu-build-new" class="ui-button menu-secondary-button" type="button">Build New World</button>
+            <button id="menu-build-new-v2" class="ui-button menu-secondary-button" type="button">Build New World (v2)</button>
             <button id="menu-open-json-viewer" class="ui-button menu-secondary-button" type="button">Open JSON In Viewer</button>
             <button id="menu-open-package-viewer" class="ui-button menu-secondary-button" type="button">Open Package In Viewer</button>
             <input id="menu-open-json-input" type="file" accept=".json,application/json" hidden />
@@ -110,6 +112,12 @@ export function createMenuPanel(element: HTMLElement, options: CreateMenuPanelOp
     const buildNewButton = target.closest<HTMLButtonElement>("#menu-build-new");
     if (buildNewButton) {
       options.onBuildNew();
+      return;
+    }
+
+    const buildNewV2Button = target.closest<HTMLButtonElement>("#menu-build-new-v2");
+    if (buildNewV2Button) {
+      options.onBuildNewV2();
       return;
     }
 

@@ -38,7 +38,8 @@ export function createBuilderPanelV2(
       hosts={{
         libraryPanel,
         inspectorPanel,
-        toastHost
+        toastHost,
+        workspace: element
       }}
     />
   );
