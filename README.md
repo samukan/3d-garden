@@ -1,92 +1,99 @@
 # Skill Garden
 
-Skill Garden is a local-first 3D world builder and viewer built with Babylon.js, Vite, and TypeScript.
-This repository contains the first presentable version for course review: a working builder mode, viewer mode, browser-local persistence, and JSON world import/export workflows.
+Skill Garden is a local-first 3D world builder and viewer built with Babylon.js, TypeScript, and Vite.
+The project currently supports end-to-end browser workflows for building worlds, saving/loading locally, importing/exporting layouts, packaging portable worlds, and presenting worlds in a read-only viewer.
 
-## Project Overview
+## Current Project Direction
 
-Skill Garden focuses on editing and presenting lightweight 3D worlds directly in the browser:
+Skill Garden is currently in a **transitional architecture phase**:
 
-- Build worlds in **Builder mode**.
-- Save and reopen worlds from the **Main Menu**.
-- View worlds in **Viewer mode** (read-only presentation mode).
-- Import/export world layouts as JSON files.
+- Core builder/viewer scene runtime is stable and actively used.
+- A legacy builder UI path still exists.
+- A newer React + Zustand builder shell path exists behind a shell mode flag and represents the current/final direction.
 
-This is intentionally a first version: core workflows are working, while cloud and collaboration features are out of scope for now.
+v1-era behavior is still supported where needed, but it is **not** the long-term primary direction.
 
-## Current Status (v1)
-
-### Working now
+## What Works Today
 
 - Main Menu -> Builder -> Save -> Viewer roundtrip.
-- Browser-local saved worlds.
-- Portable world package (`.sgw`) download/upload for uploaded-asset portability.
-- JSON download/upload and "Open JSON in Viewer" flow (legacy layout-only format).
-- Local `.glb` upload support for custom assets.
-- Playwright browser regression checks for core workflows.
+- Menu workflows for opening worlds from local saved data.
+- Builder workflows for placing, selecting, transforming, duplicating, and deleting objects.
+- Local `.glb` upload and categorization for custom assets.
+- JSON layout import/export workflows (legacy format).
+- Portable world package import/export via `.sgw`.
+- Viewer load diagnostics for missing/unavailable assets.
+- Camera-route metadata support for viewer autoplay/fallback presentation routes.
+- Playwright browser checks (smoke and e2e coverage under `playwright/`).
 
-### Still early-stage
+## Builder and Viewer Reality
 
-- No backend, no user accounts, and no cloud synchronization.
-- World portability is limited when worlds use uploaded local assets.
-- Performance optimization for initial bundle/load is still ongoing.
-
-## Key Features
-
-- Dual app modes: menu, builder, and viewer.
-- Asset placement and object editing (move/rotate/scale, duplicate/delete).
-- Saved-world management (create, edit, view, delete) in local storage.
-- JSON layout workflows through advanced builder tools.
-- Portable world package workflows through advanced builder tools.
-- JSON file download/upload support.
-- World package (`.sgw`) file download/upload support.
-- Open a world JSON directly in viewer mode from the menu.
-- Open a world package directly in viewer mode from the menu.
-- Upload and categorize local `.glb` assets.
-- Viewer diagnostics for missing/unavailable assets.
-
-## Builder vs Viewer
-
-| Mode | Purpose | What you can do |
+| Mode | Purpose | Current behavior |
 | --- | --- | --- |
-| Builder | Create and edit worlds | Place assets, transform objects, save worlds, import/export JSON, upload `.glb` assets |
-| Viewer | Present worlds in read-only mode | Inspect world content, reset camera view, review load diagnostics |
+| Menu | Entry point | Lists saved worlds, opens viewer/builder flows, supports JSON/SGW open-in-viewer flows |
+| Builder | Authoring | Scene editing + persistence/export tools; supports legacy UI shell and newer v2 shell mode |
+| Viewer | Presentation | Read-only world playback, reset view, diagnostics, camera presentation/autoplay behavior |
+
+Builder shell modes:
+
+- `builderShell=v1`: legacy imperative panel path.
+- `builderShell=v2`: React + Zustand shell path (target direction, still transitional).
 
 ## Tech Stack
 
-- **Rendering/3D:** Babylon.js (`@babylonjs/core`, `@babylonjs/loaders`)
-- **Build tool:** Vite
-- **Language:** TypeScript
-- **Validation:** Zod
-- **Browser testing:** Playwright
+- Rendering/3D: Babylon.js (`@babylonjs/core`, `@babylonjs/loaders`)
+- UI direction: React + Zustand (builder shell migration path)
+- Build tool: Vite
+- Language: TypeScript
+- Validation: Zod
+- Browser testing: Playwright
 
 ## Local-First Data Model
 
-Skill Garden is designed to run without a backend:
+Skill Garden runs without a backend. Data is stored in browser-local stores:
 
 - `localStorage`: saved worlds (`skill-garden.saved-worlds.v1`)
-- `sessionStorage`: temporary viewer drafts for imported JSON (`skill-garden.viewer-drafts.v1`)
+- `sessionStorage`: temporary viewer drafts (`skill-garden.viewer-drafts.v1`)
 - `IndexedDB`: uploaded local asset blobs (`skill-garden.uploaded-assets.v1`)
 
-Important implication:
+Important implications:
 
 - Data is browser- and origin-specific.
-- `worldId` / `worldJsonId` URL links are not globally shareable unless matching local data also exists in that exact browser environment.
-- For portability across fresh environments, use world package export/import instead of legacy layout JSON.
+- URL world links depend on matching local data in that same environment.
+- Cross-device/environment portability should use `.sgw`, not legacy JSON.
 
-## World File Formats
+## World Formats: `.json` vs `.sgw`
 
-- `.sgw` (recommended): portable world package zip containing `world.json` + uploaded `.glb` payloads.
-- `.json` (legacy): layout-only world document; references uploaded asset IDs but does not include uploaded binary payloads.
+- `.json` (legacy layout format): stores layout + metadata, but does **not** include uploaded `.glb` binary payloads.
+- `.sgw` (recommended portable package): zip package containing world layout plus uploaded asset payloads, designed for portable world transfer.
+
+Practical rule:
+
+- Use `.json` for layout-level workflows and debugging.
+- Use `.sgw` when world portability is required.
+
+## Camera Routes (Current)
+
+- Worlds can carry camera-route metadata (multiple routes + optional default route).
+- Viewer route resolution prefers world metadata routes when playable.
+- If no playable world route exists, viewer falls back to profile-based cinematic routes.
 
 ## Project Structure (Short)
 
-- `src/main.ts`: app bootstrapping and mode routing
-- `src/builder`: world editing logic and layout serialization
-- `src/viewer`: viewer bootstrapping and world resolution
-- `src/storage`: local persistence (saved worlds, viewer drafts, uploaded assets)
-- `src/generation`: built-in asset manifest and loading
-- `playwright`: smoke and end-to-end browser tests
+- `src/main.ts`: app bootstrap, mode routing, builder/viewer/menu entry behavior
+- `src/appMode.ts`: app mode and builder shell route parsing
+- `src/builder`: scene builder runtime and layout serialization
+- `src/viewer`: viewer world resolution and viewer bootstrap
+- `src/editor-shell`: React + Zustand builder shell direction
+- `src/storage`: saved worlds, viewer drafts, uploaded asset persistence
+- `src/world-package`: `.sgw` world package import/export
+- `src/camera-routes`: route types, registry, playback behavior
+- `playwright`: browser smoke/e2e coverage and debug harness utilities
+
+## Technical Docs
+
+- Runtime and shell architecture: `docs/architecture-current-state.md`
+- Storage layers and world formats: `docs/storage-world-formats.md`
+- Development and testing quick reference: `docs/development-testing.md`
 
 ## Run Locally
 
@@ -95,14 +102,20 @@ npm install
 npm run dev
 ```
 
-Production build and local preview:
+Build and preview:
 
 ```bash
 npm run build
 npm run preview
 ```
 
-## How to Test
+Type check:
+
+```bash
+npm run typecheck
+```
+
+## Test Locally
 
 Install Playwright browser dependency (one-time per environment):
 
@@ -110,89 +123,35 @@ Install Playwright browser dependency (one-time per environment):
 npm run playwright:install
 ```
 
-Run browser smoke/e2e checks:
+Run browser debug/test harness:
 
 ```bash
 npm run debug:browser
 ```
 
-Optional headed run:
+Run with visible browser:
 
 ```bash
 npm run debug:browser:headed
 ```
 
-## Builder Shell Feature Flag (Phase 1)
+## Transitional Areas and Known Limitations
 
-An experimental builder shell scaffold is available behind a query flag:
+- No backend/accounts/cloud sync (local-first by design).
+- Builder shell architecture is transitional (`v1` legacy path + `v2` target path).
+- Legacy `.json` format is not fully portable for worlds depending on uploaded local assets.
+- URL-linked world opening still depends on local data availability in the same browser/origin.
+- Performance optimization and load-time improvements are still ongoing.
+- WebGPU availability is environment-dependent; runtime falls back to WebGL when needed.
 
-- `?appMode=builder&builderShell=v2`
+## Near-Term Direction
 
-This keeps existing scene logic intact while enabling the new top/left/center/right editor shell layout scaffolding.
-
-## Presentation World Files
-
-The current presented world file in repo root is:
-
-- file stem: `skill-garden-eka-maailma-2026-03-13T04-54-33-713Z`
-- actual file: `skill-garden-eka-maailma-2026-03-13T04-54-33-713Z.json`
-
-Teacher/reviewer can inspect this exact file from the Main Menu using **Open JSON In Viewer**.
-
-Important caveat for this specific file:
-
-- It references mostly uploaded local asset IDs from the original development browser session.
-- On a fresh browser/device/deployment, it will still open, but many objects may be skipped because those local uploads are not present.
-
-To provide a reproducible built-in-only example, this repo also includes:
-
-- `skill-garden-reviewer-safe-world-v1-2026-03-13.json`
-
-This reviewer-safe file is designed to render on any fresh environment that has this repo's committed built-in assets.
-
-## Vercel Deployment (First Public Link)
-
-Live demo (placeholder): [Replace with your Vercel URL](https://your-vercel-project-url.vercel.app)
-
-Expected Vercel build settings for this repo:
-
-- Install command: `npm ci`
-- Build command: `npm run build`
-- Output directory: `dist`
-
-Notes:
-
-- App mode routing is query-param based (`?appMode=menu|builder|viewer`), so root static hosting is sufficient.
-- Because persistence is local-first, data in one environment (localhost/Vercel preview/Vercel production) does not automatically appear in another.
-
-## What I Learned
-
-Many parts of this project were relatively new to me, and this first version reflects that learning curve.
-
-- Building 3D interaction loops in Babylon.js taught me practical scene setup, camera behavior, and lighting tradeoffs.
-- Separating builder and viewer modes helped me design flows by user intent rather than by file/module boundaries.
-- Asset handling was more complex than expected: built-in GLBs are straightforward, but uploaded assets require careful browser-storage fallback handling.
-- Local-first persistence with validation taught me to treat corrupted/invalid browser data as a normal case and recover safely.
-- Building UI in plain TypeScript (without a framework) improved my understanding of event wiring, keyboard ergonomics, and mode-driven state updates.
-- Playwright browser tests helped me validate real user flows (save/view/edit/import/export), not just isolated logic.
-- Iterating with AI coding agents improved how I plan, verify, and harden changes in small steps.
-
-## Known Limitations
-
-- No backend, accounts, or cloud sync in this version.
-- Legacy JSON exports are layout-only; uploaded assets are not portable in that format.
-- URL-linked worlds depend on local data presence.
-- Initial bundle size is still larger than ideal for slower networks/devices.
-- WebGPU availability is environment-dependent; the app falls back to WebGL.
-
-## Roadmap / Next Steps
-
-- Add a stronger reviewer/demo world set and optional template worlds.
-- Improve portability tooling for worlds that reference uploaded assets.
-- Optimize first-load performance and asset loading behavior.
-- Expand editor usability and presentation polish.
+- Continue moving builder UX toward the React + Zustand shell direction.
+- Keep viewer presentation behavior stable while improving diagnostics and route polish.
+- Improve portability and demo reliability around world packaging flows.
+- Continue iterative performance improvements.
 
 ## Asset Attribution
 
 Nature Kit assets are by Kenney and distributed under CC0.
-See `public/assets/nature-kit/License.txt` for included license text.
+See `public/assets/nature-kit/License.txt`.
